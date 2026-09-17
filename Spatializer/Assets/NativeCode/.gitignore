@@ -1,0 +1,91 @@
+# Based on https://github.com/github/gitignore/blob/main/C%2B%2B.gitignore
+# Scoped to native sources so Unity plug-ins elsewhere can be versioned.
+
+# Dependencies, objects, precompiled headers, and linker/debug output
+*.d
+*.slo
+*.lo
+*.o
+*.obj
+*.gch
+*.pch
+*.ilk
+*.pdb
+*.dwo
+
+# Compiled libraries and executables
+*.so
+*.so.*
+*.dylib
+*.dll
+*.lai
+*.la
+*.a
+*.lib
+*.exe
+*.out
+*.app
+/TeleportDemoOSX
+
+# Build directories
+build/
+Build/
+build-*/
+
+# CMake output (keep the SDK's hand-written Makefile)
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+install_manifest.txt
+compile_commands.json
+
+# Temporary files, dependencies, and test caches
+*.tmp
+*.log
+*.bak
+*.swp
+vcpkg_installed/
+Testing/
+.cache/
+
+# Unity sidecars for ignored native output
+*.d.meta
+*.slo.meta
+*.lo.meta
+*.o.meta
+*.obj.meta
+*.gch.meta
+*.pch.meta
+*.ilk.meta
+*.pdb.meta
+*.dwo.meta
+*.so.meta
+*.so.*.meta
+*.dylib.meta
+*.dll.meta
+*.lai.meta
+*.la.meta
+*.a.meta
+*.lib.meta
+*.exe.meta
+*.out.meta
+*.app.meta
+/TeleportDemoOSX.meta
+build.meta
+Build.meta
+build-*.meta
+CMakeFiles.meta
+CMakeCache.txt.meta
+cmake_install.cmake.meta
+install_manifest.txt.meta
+compile_commands.json.meta
+*.tmp.meta
+*.log.meta
+*.bak.meta
+*.swp.meta
+vcpkg_installed.meta
+Testing.meta
+.cache.meta
+
+# Native solutions are source files, unlike Unity-generated C# solutions.
+!*.sln

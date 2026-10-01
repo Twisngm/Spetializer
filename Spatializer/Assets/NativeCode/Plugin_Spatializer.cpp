@@ -1,6 +1,7 @@
 // Please note that this will only work on Unity 5.2 or higher.
 
 #include "AudioPluginUtil.h"
+#include <atomic>
 
 extern float hrtfSrcData[];
 extern float reverbmixbuffer[];
@@ -18,6 +19,27 @@ namespace Spatializer
     const int HRTFLEN = 512;
 
     const float GAINCORRECTION = 2.0f;
+
+    // Single shared snapshot: listener-local x/y/z, azimuth/elevation in degrees.
+    // Retains the last published values until the native library is unloaded.
+    static float currentSpatialization[5] = { 0 };
+    static bool hasCurrentSpatialization = false;
+    static std::atomic_flag spatializationLock = ATOMIC_FLAG_INIT;
+
+    static void StoreCurrentSpatialization(float x, float y, float z, float azimuth, float elevation)
+    {
+        // Never wait on the audio thread. Skip this update if a reader is copying.
+        if (spatializationLock.test_and_set(std::memory_order_acquire))
+            return;
+
+        currentSpatialization[0] = x;
+        currentSpatialization[1] = y;
+        currentSpatialization[2] = z;
+        currentSpatialization[3] = azimuth;
+        currentSpatialization[4] = elevation;
+        hasCurrentSpatialization = true;
+        spatializationLock.clear(std::memory_order_release);
+    }
 
     class HRTFData
     {
@@ -222,6 +244,7 @@ namespace Spatializer
         azimuth = AudioPluginUtil::FastClip(azimuth * kRad2Deg, 0.0f, 360.0f);
 
         float elevation = atan2f(dir_y, sqrtf(dir_x * dir_x + dir_z * dir_z) + 0.001f) * kRad2Deg;
+        StoreCurrentSpatialization(dir_x, dir_y, dir_z, azimuth, elevation);
         float spatialblend = state->spatializerdata->spatialblend;
         float reverbmix = state->spatializerdata->reverbzonemix;
 
@@ -285,4 +308,24 @@ namespace Spatializer
 
         return UNITY_AUDIODSP_OK;
     }
+}
+
+// C ABI for C#/DllImport (CallingConvention.Cdecl).
+// values must point to at least five floats; extra elements are left unchanged.
+// Order: listener-local x, y, z, azimuth (degrees), elevation (degrees).
+// Returns 1 on success, 0 before the first snapshot or while busy, -1 for invalid arguments.
+// On 0/-1 the caller's buffer is unchanged. Multiple sources share the latest snapshot.
+extern "C" UNITY_AUDIODSP_EXPORT_API int Spatializer_GetCurrentSpatialization(float* values, int count)
+{
+    if (values == NULL || count < 5)
+        return -1;
+    if (Spatializer::spatializationLock.test_and_set(std::memory_order_acquire))
+        return 0;
+
+    const int result = Spatializer::hasCurrentSpatialization ? 1 : 0;
+    if (result == 1)
+        memcpy(values, Spatializer::currentSpatialization, sizeof(Spatializer::currentSpatialization));
+
+    Spatializer::spatializationLock.clear(std::memory_order_release);
+    return result;
 }

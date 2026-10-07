@@ -238,18 +238,30 @@ namespace Spatializer
         float dir_y = m[1] * px + m[5] * py + m[9] * pz + m[13];
         float dir_z = m[2] * px + m[6] * py + m[10] * pz + m[14];
 
-        float azimuth = (fabsf(dir_z) < 0.001f) ? 0.0f : atan2f(dir_x, dir_z);
-        if (azimuth < 0.0f)
-            azimuth += 2.0f * AudioPluginUtil::kPI;
+        float horizontalDist = sqrtf(dir_x * dir_x + dir_z * dir_z);
+
+        float azimuth = 0.0f;
+
+        if (horizontalDist > 1.0e-6f) // 수직 관계일 경우는 추가 계산 없이 0값을 그대로 사용
+        {
+            azimuth = atan2f(dir_x, dir_z);
+            if (azimuth < 0.0f)
+                azimuth += 2.0f * AudioPluginUtil::kPI;
+        }
         azimuth = AudioPluginUtil::FastClip(azimuth * kRad2Deg, 0.0f, 360.0f);
 
-        float elevation = atan2f(dir_y, sqrtf(dir_x * dir_x + dir_z * dir_z) + 0.001f) * kRad2Deg;
+        float elevation = atan2f(dir_y, horizontalDist) * kRad2Deg;
         StoreCurrentSpatialization(dir_x, dir_y, dir_z, azimuth, elevation);
         float spatialblend = state->spatializerdata->spatialblend;
         float reverbmix = state->spatializerdata->reverbzonemix;
 
-        GetHRTF(0, data->ch[0].h, azimuth, elevation);
-        GetHRTF(1, data->ch[1].h, azimuth, elevation);
+        // if entering afterEffect, these lines are not required.
+        StoreCurrentSpatialization(dir_x, dir_y, dir_z, azimuth, elevation);
+
+        memcpy(outbuffer, inbuffer, length * 2 * sizeof(float));
+
+        //GetHRTF(0, data->ch[0].h, azimuth, elevation);
+        //GetHRTF(1, data->ch[1].h, azimuth, elevation);
 
         // From the FMOD documentation:
         //   A spread angle of 0 makes the stereo sound mono at the point of the 3D emitter.
@@ -258,53 +270,53 @@ namespace Spatializer
         //   A spread angle of 360 makes the stereo sound mono at the opposite speaker location to where the 3D emitter should be located (by moving the left part 180 degrees left and the right part 180 degrees right). So in this case, behind you when the sound should be in front of you!
         // Note that FMOD performs the spreading and panning in one go. We can't do this here due to the way that impulse-based spatialization works, so we perform the spread calculations on the left/right source signals before they enter the convolution processing.
         // That way we can still use it to control how the source signal downmixing takes place.
-        float spread = cosf(state->spatializerdata->spread * AudioPluginUtil::kPI / 360.0f);
-        float spreadmatrix[2] = { 2.0f - spread, spread };
+        //float spread = cosf(state->spatializerdata->spread * AudioPluginUtil::kPI / 360.0f);
+        //float spreadmatrix[2] = { 2.0f - spread, spread };
 
-        float* reverb = reverbmixbuffer;
-        for (unsigned int sampleOffset = 0; sampleOffset < length; sampleOffset += HRTFLEN)
-        {
-            for (int c = 0; c < 2; c++)
-            {
-                // stereopan is in the [-1; 1] range, this acts the way fmod does it for stereo
-                float stereopan = 1.0f - ((c == 0) ? AudioPluginUtil::FastMax(0.0f, state->spatializerdata->stereopan) : AudioPluginUtil::FastMax(0.0f, -state->spatializerdata->stereopan));
+        //float* reverb = reverbmixbuffer;
+        //for (unsigned int sampleOffset = 0; sampleOffset < length; sampleOffset += HRTFLEN)
+        //{
+        //    for (int c = 0; c < 2; c++)
+        //    {
+        //        // stereopan is in the [-1; 1] range, this acts the way fmod does it for stereo
+        //        float stereopan = 1.0f - ((c == 0) ? AudioPluginUtil::FastMax(0.0f, state->spatializerdata->stereopan) : AudioPluginUtil::FastMax(0.0f, -state->spatializerdata->stereopan));
 
-                InstanceChannel& ch = data->ch[c];
+        //        InstanceChannel& ch = data->ch[c];
 
-                for (int n = 0; n < HRTFLEN; n++)
-                {
-                    float left  = inbuffer[n * 2];
-                    float right = inbuffer[n * 2 + 1];
-                    ch.buffer[n] = ch.buffer[n + HRTFLEN];
-                    ch.buffer[n + HRTFLEN] = left * spreadmatrix[c] + right * spreadmatrix[1 - c];
-                }
+        //        for (int n = 0; n < HRTFLEN; n++)
+        //        {
+        //            float left  = inbuffer[n * 2];
+        //            float right = inbuffer[n * 2 + 1];
+        //            ch.buffer[n] = ch.buffer[n + HRTFLEN];
+        //            ch.buffer[n + HRTFLEN] = left * spreadmatrix[c] + right * spreadmatrix[1 - c];
+        //        }
 
-                for (int n = 0; n < HRTFLEN * 2; n++)
-                {
-                    ch.x[n].re = ch.buffer[n];
-                    ch.x[n].im = 0.0f;
-                }
+        //        for (int n = 0; n < HRTFLEN * 2; n++)
+        //        {
+        //            ch.x[n].re = ch.buffer[n];
+        //            ch.x[n].im = 0.0f;
+        //        }
 
-                AudioPluginUtil::FFT::Forward(ch.x, HRTFLEN * 2, false);
+        //        AudioPluginUtil::FFT::Forward(ch.x, HRTFLEN * 2, false);
 
-                for (int n = 0; n < HRTFLEN * 2; n++)
-                    AudioPluginUtil::UnityComplexNumber::Mul<float, float, float>(ch.x[n], ch.h[n], ch.y[n]);
+        //        for (int n = 0; n < HRTFLEN * 2; n++)
+        //            AudioPluginUtil::UnityComplexNumber::Mul<float, float, float>(ch.x[n], ch.h[n], ch.y[n]);
 
-                AudioPluginUtil::FFT::Backward(ch.y, HRTFLEN * 2, false);
+        //        AudioPluginUtil::FFT::Backward(ch.y, HRTFLEN * 2, false);
 
-                for (int n = 0; n < HRTFLEN; n++)
-                {
-                    float s = inbuffer[n * 2 + c] * stereopan;
-                    float y = s + (ch.y[n].re * GAINCORRECTION - s) * spatialblend;
-                    outbuffer[n * 2 + c] = y;
-                    reverb[n * 2 + c] += y * reverbmix;
-                }
-            }
+        //        for (int n = 0; n < HRTFLEN; n++)
+        //        {
+        //            float s = inbuffer[n * 2 + c] * stereopan;
+        //            float y = s + (ch.y[n].re * GAINCORRECTION - s) * spatialblend;
+        //            outbuffer[n * 2 + c] = y;
+        //            reverb[n * 2 + c] += y * reverbmix;
+        //        }
+        //    }
 
-            inbuffer += HRTFLEN * 2;
-            outbuffer += HRTFLEN * 2;
-            reverb += HRTFLEN * 2;
-        }
+        //    inbuffer += HRTFLEN * 2;
+        //    outbuffer += HRTFLEN * 2;
+        //    reverb += HRTFLEN * 2;
+        //}
 
         return UNITY_AUDIODSP_OK;
     }

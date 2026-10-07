@@ -13,6 +13,7 @@ namespace Spatializer
         P_AUDIOSRCATTN,
         P_FIXEDVOLUME,
         P_CUSTOMFALLOFF,
+        P_GAIN,
         P_NUM
     };
 
@@ -138,6 +139,7 @@ namespace Spatializer
         AudioPluginUtil::RegisterParameter(definition, "AudioSrc Attn", "", 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, P_AUDIOSRCATTN, "AudioSource distance attenuation");
         AudioPluginUtil::RegisterParameter(definition, "Fixed Volume", "", 0.0f, 1.0f, 0.0f, 1.0f, 1.0f, P_FIXEDVOLUME, "Fixed volume amount");
         AudioPluginUtil::RegisterParameter(definition, "Custom Falloff", "", 0.0f, 1.0f, 0.0f, 1.0f, 1.0f, P_CUSTOMFALLOFF, "Custom volume falloff amount (logarithmic)");
+        AudioPluginUtil::RegisterParameter(definition, "Gain", "", 0.0f, 2.0f, 1.0f, 1.0f, 1.0f, P_GAIN, "Output Gain, +/- 0.5 = +/- 6db");
         definition.flags |= UnityAudioEffectDefinitionFlags_IsSpatializer;
         return numparams;
     }
@@ -258,7 +260,14 @@ namespace Spatializer
         // if entering afterEffect, these lines are not required.
         StoreCurrentSpatialization(dir_x, dir_y, dir_z, azimuth, elevation);
 
-        memcpy(outbuffer, inbuffer, length * 2 * sizeof(float));
+        //const float gain = data -> p[P_GAIN];
+        float gain = 0.5f;
+
+        for (unsigned int n = 0; n < length * 2; ++n)
+        {
+            outbuffer[n] = inbuffer[n] * gain;
+        }
+        //memcpy(outbuffer, inbuffer, length * 2 * sizeof(float));
 
         //GetHRTF(0, data->ch[0].h, azimuth, elevation);
         //GetHRTF(1, data->ch[1].h, azimuth, elevation);

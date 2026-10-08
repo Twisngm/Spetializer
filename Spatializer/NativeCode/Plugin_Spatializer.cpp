@@ -258,7 +258,14 @@ namespace Spatializer
         // if entering afterEffect, these lines are not required.
         StoreCurrentSpatialization(dir_x, dir_y, dir_z, azimuth, elevation);
 
-        memcpy(outbuffer, inbuffer, length * 2 * sizeof(float));
+        //const float gain = data -> p[P_GAIN];
+        float gain = 2.0f;
+
+        for (unsigned int n = 0; n < length * 2; ++n)
+        {
+            outbuffer[n] = inbuffer[n] * gain;
+        }
+        //memcpy(outbuffer, inbuffer, length * 2 * sizeof(float));
 
         //GetHRTF(0, data->ch[0].h, azimuth, elevation);
         //GetHRTF(1, data->ch[1].h, azimuth, elevation);

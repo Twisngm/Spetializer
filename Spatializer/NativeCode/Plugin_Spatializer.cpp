@@ -261,7 +261,7 @@ namespace Spatializer
         StoreCurrentSpatialization(dir_x, dir_y, dir_z, azimuth, elevation);
 
         //const float gain = data -> p[P_GAIN];
-        float gain = 0.5f;
+        float gain = 2.0f;
 
         for (unsigned int n = 0; n < length * 2; ++n)
         {

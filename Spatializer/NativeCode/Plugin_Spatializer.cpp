@@ -13,6 +13,7 @@ namespace Spatializer
         P_AUDIOSRCATTN,
         P_FIXEDVOLUME,
         P_CUSTOMFALLOFF,
+        P_GAIN,
         P_NUM
     };
 
@@ -138,6 +139,7 @@ namespace Spatializer
         AudioPluginUtil::RegisterParameter(definition, "AudioSrc Attn", "", 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, P_AUDIOSRCATTN, "AudioSource distance attenuation");
         AudioPluginUtil::RegisterParameter(definition, "Fixed Volume", "", 0.0f, 1.0f, 0.0f, 1.0f, 1.0f, P_FIXEDVOLUME, "Fixed volume amount");
         AudioPluginUtil::RegisterParameter(definition, "Custom Falloff", "", 0.0f, 1.0f, 0.0f, 1.0f, 1.0f, P_CUSTOMFALLOFF, "Custom volume falloff amount (logarithmic)");
+        AudioPluginUtil::RegisterParameter(definition, "Gain", "x", 0.0f, 4.0f, 2.0f, 1.0f, 1.0f, P_GAIN, "Linear output gain (0 = mute, 1 = unity gain)");
         definition.flags |= UnityAudioEffectDefinitionFlags_IsSpatializer;
         return numparams;
     }
@@ -173,8 +175,10 @@ namespace Spatializer
     UNITY_AUDIODSP_RESULT UNITY_AUDIODSP_CALLBACK SetFloatParameterCallback(UnityAudioEffectState* state, int index, float value)
     {
         EffectData* data = state->GetEffectData<EffectData>();
-        if (index >= P_NUM)
+        if (index < 0 || index >= P_NUM)
             return UNITY_AUDIODSP_ERR_UNSUPPORTED;
+        if (index == P_GAIN)
+            value = AudioPluginUtil::FastClip(value, 0.0f, 4.0f);
         data->p[index] = value;
         return UNITY_AUDIODSP_OK;
     }
@@ -182,7 +186,7 @@ namespace Spatializer
     UNITY_AUDIODSP_RESULT UNITY_AUDIODSP_CALLBACK GetFloatParameterCallback(UnityAudioEffectState* state, int index, float* value, char *valuestr)
     {
         EffectData* data = state->GetEffectData<EffectData>();
-        if (index >= P_NUM)
+        if (index < 0 || index >= P_NUM)
             return UNITY_AUDIODSP_ERR_UNSUPPORTED;
         if (value != NULL)
             *value = data->p[index];
@@ -258,8 +262,7 @@ namespace Spatializer
         // if entering afterEffect, these lines are not required.
         StoreCurrentSpatialization(dir_x, dir_y, dir_z, azimuth, elevation);
 
-        //const float gain = data -> p[P_GAIN];
-        float gain = 2.0f;
+        const float gain = data->p[P_GAIN];
 
         for (unsigned int n = 0; n < length * 2; ++n)
         {

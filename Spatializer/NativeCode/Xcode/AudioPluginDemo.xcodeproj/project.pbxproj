@@ -17,7 +17,6 @@
 		3B91CA671A7FC62D00BB861B /* Plugin_ModalFilter.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 3B91CA651A7FC62D00BB861B /* Plugin_ModalFilter.cpp */; };
 		3BA205681AD1A54300CA4036 /* Plugin_Spatializer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 3BA205651AD1A54300CA4036 /* Plugin_Spatializer.cpp */; };
 		3BA205691AD1A54300CA4036 /* Plugin_SpatializerReverb.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 3BA205661AD1A54300CA4036 /* Plugin_SpatializerReverb.cpp */; };
-		3BA2056A1AD1A54300CA4036 /* hrtftable.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 3BA205671AD1A54300CA4036 /* hrtftable.cpp */; };
 		3BBFF7D71AE662590091DB6A /* Plugin_ImpulseGenerator.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 3BBFF7D61AE662590091DB6A /* Plugin_ImpulseGenerator.cpp */; };
 		3BBFF7D91AE667600091DB6A /* Plugin_Oscilloscope.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 3BBFF7D81AE667600091DB6A /* Plugin_Oscilloscope.cpp */; };
 		3BC406E41AFB7CDF00E92CB9 /* CoreMIDI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3BC406E31AFB7CDF00E92CB9 /* CoreMIDI.framework */; };
@@ -52,7 +51,6 @@
 		3B91CA651A7FC62D00BB861B /* Plugin_ModalFilter.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = Plugin_ModalFilter.cpp; path = ../Plugin_ModalFilter.cpp; sourceTree = "<group>"; };
 		3BA205651AD1A54300CA4036 /* Plugin_Spatializer.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = Plugin_Spatializer.cpp; path = ../Plugin_Spatializer.cpp; sourceTree = "<group>"; };
 		3BA205661AD1A54300CA4036 /* Plugin_SpatializerReverb.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = Plugin_SpatializerReverb.cpp; path = ../Plugin_SpatializerReverb.cpp; sourceTree = "<group>"; };
-		3BA205671AD1A54300CA4036 /* hrtftable.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = hrtftable.cpp; path = ../hrtftable.cpp; sourceTree = "<group>"; };
 		3BBFF7D61AE662590091DB6A /* Plugin_ImpulseGenerator.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = Plugin_ImpulseGenerator.cpp; path = ../Plugin_ImpulseGenerator.cpp; sourceTree = "<group>"; };
 		3BBFF7D81AE667600091DB6A /* Plugin_Oscilloscope.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = Plugin_Oscilloscope.cpp; path = ../Plugin_Oscilloscope.cpp; sourceTree = "<group>"; };
 		3BC406E31AFB7CDF00E92CB9 /* CoreMIDI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreMIDI.framework; path = System/Library/Frameworks/CoreMIDI.framework; sourceTree = SDKROOT; };
@@ -125,7 +123,6 @@
 		08FB77AFFE84173DC02AAC07 /* Source */ = {
 			isa = PBXGroup;
 			children = (
-				3BA205671AD1A54300CA4036 /* hrtftable.cpp */,
 				3D199B5E1858F3E60063EC53 /* AudioPluginUtil.cpp */,
 				3D199B5F1858F3E60063EC53 /* AudioPluginUtil.h */,
 				3D199B601858F3E60063EC53 /* Plugin_ConvolutionReverb.cpp */,
@@ -230,7 +227,6 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				3BA2056A1AD1A54300CA4036 /* hrtftable.cpp in Sources */,
 				3BA205691AD1A54300CA4036 /* Plugin_SpatializerReverb.cpp in Sources */,
 				3D199B6E1858F3E60063EC53 /* AudioPluginUtil.cpp in Sources */,
 				3D199B711858F3E60063EC53 /* Plugin_Equalizer.cpp in Sources */,

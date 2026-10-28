@@ -1,19 +1,12 @@
 // Please note that this will only work on Unity 5.2 or higher.
 
 #include "AudioPluginUtil.h"
+#include "SpatializerDSP.h"
+#include "SpatializerParameters.h"
 #include <atomic>
 
 namespace Spatializer
 {
-    enum
-    {
-        P_AUDIOSRCATTN,
-        P_FIXEDVOLUME,
-        P_CUSTOMFALLOFF,
-        P_GAIN,
-        P_NUM
-    };
-
     // Single shared snapshot: listener-local x/y/z, azimuth/elevation in degrees.
     // Retains the last published values until the native library is unloaded.
     static float currentSpatialization[5] = { 0 };
@@ -37,7 +30,19 @@ namespace Spatializer
 
     struct EffectData
     {
-        float p[P_NUM];
+        std::atomic<float> p[P_NUM];
+        SpatializerDSP::FourBandProcessor multiband;
+        SpatializerDSP::MotionInterpolator motion;
+        UInt64 nextDspTick;
+        bool hasDspTick;
+
+        EffectData() : nextDspTick(0), hasDspTick(false) {}
+        void Reset()
+        {
+            multiband.Reset();
+            motion.Reset();
+            hasDspTick = false;
+        }
     };
 
     // 다른 EffectModel에서도 사용하기 위해 연산된 값을 지역 변수에서 구조체 형태로 설계 변경
@@ -118,15 +123,19 @@ namespace Spatializer
             state->hostapiversion >= 0x010300;
     }
 
+    UNITY_AUDIODSP_RESULT UNITY_AUDIODSP_CALLBACK ResetCallback(UnityAudioEffectState* state);
+
     int InternalRegisterEffectDefinition(UnityAudioEffectDefinition& definition)
     {
         int numparams = P_NUM;
         definition.paramdefs = new UnityAudioParameterDefinition[numparams];
-        AudioPluginUtil::RegisterParameter(definition, "AudioSrc Attn", "", 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, P_AUDIOSRCATTN, "AudioSource distance attenuation");
-        AudioPluginUtil::RegisterParameter(definition, "Fixed Volume", "", 0.0f, 1.0f, 0.0f, 1.0f, 1.0f, P_FIXEDVOLUME, "Fixed volume amount");
-        AudioPluginUtil::RegisterParameter(definition, "Custom Falloff", "", 0.0f, 1.0f, 0.0f, 1.0f, 1.0f, P_CUSTOMFALLOFF, "Custom volume falloff amount (logarithmic)");
-        AudioPluginUtil::RegisterParameter(definition, "Gain", "x", 0.0f, 4.0f, 2.0f, 1.0f, 1.0f, P_GAIN, "Linear output gain (0 = mute, 1 = unity gain)");
+        for (int i = 0; i < P_NUM; ++i)
+        {
+            const ParameterDefinition& p = Parameters[i];
+            AudioPluginUtil::RegisterParameter(definition, p.name, p.unit, p.minimum, p.maximum, p.initial, 1, 1, i, p.description);
+        }
         definition.flags |= UnityAudioEffectDefinitionFlags_IsSpatializer;
+        definition.reset = ResetCallback;
         return numparams;
     }
 
@@ -134,20 +143,26 @@ namespace Spatializer
     {
         EffectData* data = state->GetEffectData<EffectData>();
         *attenuationOut =
-            data->p[P_AUDIOSRCATTN] * attenuationIn +
-            data->p[P_FIXEDVOLUME] +
-            data->p[P_CUSTOMFALLOFF] * (1.0f / AudioPluginUtil::FastMax(1.0f, distanceIn));
+            data->p[P_AUDIOSRCATTN].load(std::memory_order_relaxed) * attenuationIn +
+            data->p[P_FIXEDVOLUME].load(std::memory_order_relaxed) +
+            data->p[P_CUSTOMFALLOFF].load(std::memory_order_relaxed) * (1.0f / AudioPluginUtil::FastMax(1.0f, distanceIn));
         return UNITY_AUDIODSP_OK;
     }
 
     UNITY_AUDIODSP_RESULT UNITY_AUDIODSP_CALLBACK CreateCallback(UnityAudioEffectState* state)
     {
         EffectData* effectdata = new EffectData;
-        memset(effectdata, 0, sizeof(EffectData));
         state->effectdata = effectdata;
         if (IsHostCompatible(state) && state->spatializerdata != NULL)
             state->spatializerdata->distanceattenuationcallback = DistanceAttenuationCallback;
-        AudioPluginUtil::InitParametersFromDefinitions(InternalRegisterEffectDefinition, effectdata->p);
+        for (int i = 0; i < P_NUM; ++i)
+            effectdata->p[i].store(Parameters[i].initial, std::memory_order_relaxed);
+        return UNITY_AUDIODSP_OK;
+    }
+
+    UNITY_AUDIODSP_RESULT UNITY_AUDIODSP_CALLBACK ResetCallback(UnityAudioEffectState* state)
+    {
+        state->GetEffectData<EffectData>()->Reset();
         return UNITY_AUDIODSP_OK;
     }
 
@@ -163,9 +178,10 @@ namespace Spatializer
         EffectData* data = state->GetEffectData<EffectData>();
         if (index < 0 || index >= P_NUM)
             return UNITY_AUDIODSP_ERR_UNSUPPORTED;
-        if (index == P_GAIN)
-            value = AudioPluginUtil::FastClip(value, 0.0f, 4.0f);
-        data->p[index] = value;
+        if (!SpatializerDSP::IsFinite(value))
+            return UNITY_AUDIODSP_ERR_UNSUPPORTED;
+        value = SpatializerDSP::Clamp(value, Parameters[index].minimum, Parameters[index].maximum);
+        data->p[index].store(value, std::memory_order_relaxed);
         return UNITY_AUDIODSP_OK;
     }
 
@@ -175,7 +191,7 @@ namespace Spatializer
         if (index < 0 || index >= P_NUM)
             return UNITY_AUDIODSP_ERR_UNSUPPORTED;
         if (value != NULL)
-            *value = data->p[index];
+            *value = data->p[index].load(std::memory_order_relaxed);
         if (valuestr != NULL)
             valuestr[0] = 0;
         return UNITY_AUDIODSP_OK;
@@ -188,10 +204,12 @@ namespace Spatializer
 
     UNITY_AUDIODSP_RESULT UNITY_AUDIODSP_CALLBACK ProcessCallback(UnityAudioEffectState* state, float* inbuffer, float* outbuffer, unsigned int length, int inchannels, int outchannels)
     {
+        if (length == 0) return UNITY_AUDIODSP_OK;
         // Check that I/O formats are right and that the host API supports this feature
         if (inchannels != 2 || outchannels != 2 ||
             !IsHostCompatible(state) || state->spatializerdata == NULL)
         {
+            state->GetEffectData<EffectData>()->Reset();
             for (unsigned int n = 0; n < length; ++n)
                 for (int c = 0; c < outchannels; ++c)
                     outbuffer[n * outchannels + c] = c < inchannels ? inbuffer[n * inchannels + c] : 0.0f; // in/out 채널 구성이 다를 경우 무음 처리
@@ -199,25 +217,60 @@ namespace Spatializer
         }
 
         EffectData* data = state->GetEffectData<EffectData>();
+        // 음원이 가상화되거나 멈춘 뒤 재개될 때 오래된 위치 / 필터 잔향 재사용을 막는 부분
+        if (data->hasDspTick && state->currdsptick != data->nextDspTick)
+            data->Reset();
+        data->nextDspTick = state->currdsptick + length;
+        data->hasDspTick = true;
+
+        float parameters[P_NUM];
+        for (int i = 0; i < P_NUM; ++i)
+            parameters[i] = data->p[i].load(std::memory_order_relaxed);
+        SpatializerDSP::BandSettings bands[SpatializerDSP::BandCount];
+        for (int b = 0; b < SpatializerDSP::BandCount; ++b)
+            bands[b] = { parameters[P_BAND_GAIN_LOW + b], parameters[P_BAND_DRIVE_LOW + b], parameters[P_BAND_WET_LOW + b] };
+        const float sampleRate = state->samplerate >= 1000 ? static_cast<float>(state->samplerate) : 48000.0f;
+        data->multiband.Configure(sampleRate, &parameters[P_CROSSOVER_LOW], parameters[P_MULTIBAND] >= 0.5f, bands);
         const SpatialGeometry geometry = GeometryCalc(*state->spatializerdata);
+        if (!SpatializerDSP::IsFinite(geometry.x) || !SpatializerDSP::IsFinite(geometry.y) ||
+            !SpatializerDSP::IsFinite(geometry.z) || !SpatializerDSP::IsFinite(state->spatializerdata->spatialblend))
+        {
+            data->Reset();
+            if (inbuffer != outbuffer) memcpy(outbuffer, inbuffer, sizeof(float) * length * 2);
+            return UNITY_AUDIODSP_OK;
+        }
         StoreCurrentSpatialization(geometry.x, geometry.y, geometry.z, geometry.azimuthDegrees, geometry.elevationDegrees);
 
-        const StereoGains panGains = CalculateEqualPowerGains(CalculatePan(geometry));
-        const float spatialBlend = AudioPluginUtil::FastClip(state->spatializerdata->spatialblend, 0.0f, 1.0f);
-        const float dryMix = 1.0f - spatialBlend;
-        const float gain = data->p[P_GAIN];
+        const SpatializerDSP::Position position = { geometry.x, geometry.y, geometry.z };
+        const SpatializerDSP::SpatialControls target = {
+            CalculatePan(geometry),
+            SpatializerDSP::Clamp(state->spatializerdata->spatialblend, 0.0f, 1.0f),
+            parameters[P_GAIN]
+        };
+        data->motion.Configure(position, target, sampleRate, parameters[P_MOTION_SMOOTHING_MS]);
 
+        float previousPan = 2.0f; // 첫 샘플에서 반드시 좌우 계수를 계산하도록 유효 범위 밖의 값으로 시작
+        StereoGains panGains = { 0, 0 };
         // 자체 모델 개발 이전까지 Distance 추가 감쇠 x
         for (unsigned int n = 0; n < length; ++n)
         {
-            const float left = inbuffer[n * 2];
-            const float right = inbuffer[n * 2 + 1];
+            const SpatializerDSP::StereoFrame input = { inbuffer[n * 2], inbuffer[n * 2 + 1] };
+            const SpatializerDSP::StereoFrame processed = data->multiband.Process(input);
+            const float left = processed.left;
+            const float right = processed.right;
+            const SpatializerDSP::SpatialControls controls = data->motion.Next();
+            if (controls.pan != previousPan)
+            {
+                panGains = CalculateEqualPowerGains(controls.pan);
+                previousPan = controls.pan;
+            }
+            const float dryMix = 1.0f - controls.blend;
             // 입력 음원을 하나의 점으로 처리
             const float mono = 0.5f * (left + right);
             const float pannedLeft = mono * panGains.left;
             const float pannedRight = mono * panGains.right;
-            outbuffer[n * 2] = (left * dryMix + pannedLeft * spatialBlend) * gain;
-            outbuffer[n * 2 + 1] = (right * dryMix + pannedRight * spatialBlend) * gain;
+            outbuffer[n * 2] = (left * dryMix + pannedLeft * controls.blend) * controls.gain;
+            outbuffer[n * 2 + 1] = (right * dryMix + pannedRight * controls.blend) * controls.gain;
         }
 
         return UNITY_AUDIODSP_OK;

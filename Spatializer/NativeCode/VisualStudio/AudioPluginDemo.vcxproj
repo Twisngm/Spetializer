@@ -196,7 +196,9 @@
     <ClCompile Include="..\Plugin_PitchDetector.cpp" />
     <ClCompile Include="..\Plugin_RingModulator.cpp" />
     <ClCompile Include="..\Plugin_Routing.cpp" />
-    <ClCompile Include="..\Plugin_Spatializer.cpp" />
+    <ClCompile Include="..\Plugin_Spatializer.cpp">
+      <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
+    </ClCompile>
     <ClCompile Include="..\Plugin_SpatializerReverb.cpp" />
     <ClCompile Include="..\Plugin_StereoWidener.cpp" />
     <ClCompile Include="..\Plugin_Synthesizer.cpp" />
@@ -211,6 +213,8 @@
     <ClInclude Include="..\AudioPluginInterface.h" />
     <ClInclude Include="..\AudioPluginUtil.h" />
     <ClInclude Include="..\PluginList.h" />
+    <ClInclude Include="..\SpatializerDSP.h" />
+    <ClInclude Include="..\SpatializerParameters.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

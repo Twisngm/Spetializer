@@ -1,10 +1,17 @@
-#include "AudioPluginUtil.h"
+﻿#include "AudioPluginUtil.h"
 #include <stdarg.h>
 
 namespace AudioPluginUtil
 {
 
-#define ENABLE_TESTS ((PLATFORM_WIN || PLATFORM_OSX) && 1)
+// Unity Native에 포함되어있던 정확도 검사 영역
+#ifndef ENABLE_TESTS
+#if (PLATFORM_WIN || PLATFORM_OSX) && !defined(NDEBUG)
+#define ENABLE_TESTS 1
+#else
+#define ENABLE_TESTS 0
+#endif
+#endif
 
 char* strnew(const char* src)
 {

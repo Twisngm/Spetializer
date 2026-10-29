@@ -1,0 +1,22 @@
+index,name,minimum,maximum,default_value
+0,AudioSrc Attn,0,1,1
+1,Fixed Volume,0,1,0
+2,Custom Falloff,0,1,0
+3,Gain,0,4,2
+4,4 Band Enable,0,1,0
+5,Low Split,20,20000,250
+6,Mid Split,20,20000,2000
+7,High Split,20,20000,6000
+8,Low Gain,0,4,1
+9,Low Mid Gain,0,4,1
+10,High Mid Gain,0,4,1
+11,High Gain,0,4,1
+12,Low Drive,1,8,1
+13,Low Mid Drive,1,8,1
+14,High Mid Drive,1,8,1
+15,High Drive,1,8,1
+16,Low Wet,0,1,0
+17,Low Mid Wet,0,1,0
+18,High Mid Wet,0,1,0
+19,High Wet,0,1,0
+20,Motion Smooth,0,100,5

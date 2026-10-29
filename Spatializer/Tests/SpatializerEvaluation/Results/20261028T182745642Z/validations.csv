@@ -1,0 +1,135 @@
+test,status,actual_error_or_failure_count,limit,detail
+parameter_count,PASS,0,0,ABI regression
+parameter_definition_0,PASS,0,0,DLL metadata vs source contract
+parameter_definition_1,PASS,0,0,DLL metadata vs source contract
+parameter_definition_2,PASS,0,0,DLL metadata vs source contract
+parameter_definition_3,PASS,0,0,DLL metadata vs source contract
+parameter_definition_4,PASS,0,0,DLL metadata vs source contract
+parameter_definition_5,PASS,0,0,DLL metadata vs source contract
+parameter_definition_6,PASS,0,0,DLL metadata vs source contract
+parameter_definition_7,PASS,0,0,DLL metadata vs source contract
+parameter_definition_8,PASS,0,0,DLL metadata vs source contract
+parameter_definition_9,PASS,0,0,DLL metadata vs source contract
+parameter_definition_10,PASS,0,0,DLL metadata vs source contract
+parameter_definition_11,PASS,0,0,DLL metadata vs source contract
+parameter_definition_12,PASS,0,0,DLL metadata vs source contract
+parameter_definition_13,PASS,0,0,DLL metadata vs source contract
+parameter_definition_14,PASS,0,0,DLL metadata vs source contract
+parameter_definition_15,PASS,0,0,DLL metadata vs source contract
+parameter_definition_16,PASS,0,0,DLL metadata vs source contract
+parameter_definition_17,PASS,0,0,DLL metadata vs source contract
+parameter_definition_18,PASS,0,0,DLL metadata vs source contract
+parameter_definition_19,PASS,0,0,DLL metadata vs source contract
+parameter_definition_20,PASS,0,0,DLL metadata vs source contract
+reject_nonfinite_parameter,PASS,0,0,rejected setter must preserve previous value
+reject_nonfinite_parameter,PASS,0,0,rejected setter must preserve previous value
+reject_nonfinite_parameter,PASS,0,0,rejected setter must preserve previous value
+reject_negative_parameter_index,PASS,0,0,invalid ABI index
+reject_past_end_parameter_index,PASS,0,0,invalid ABI index
+gain_lower_clamp,PASS,0,0,clamp to zero
+gain_upper_clamp,PASS,0,0,clamp to four
+geometry_position_max,PASS,4.76837158203e-07,1e-05,synthetic translated and rotated listener matrices; Unity-unit error
+geometry_azimuth_max_deg,PASS,2.11773981675e-05,0.001,circular angle difference; coincident positions excluded
+geometry_elevation_max_deg,PASS,1.52587890625e-05,0.001,coincident positions excluded
+panning_max_coefficient_error,PASS,1.87742393804e-07,2e-06,double-precision analytic oracle; includes spatial blend
+static_equal_power_max_error,PASS,1.72769779816e-07,2e-06,only blend=1 and output gain=1; mono coefficient probe
+motion_power_44100_0_step,PASS,0,2e-06,unit mono probe; this is not total mixed audio power
+motion_finite_44100_0_step,PASS,0,0,two output channels
+motion_reach_44100_0_step,PASS,0,0,samples from first accepted target; not device latency
+motion_power_44100_0_circle,PASS,1.91205650424e-07,2e-06,unit mono probe; this is not total mixed audio power
+motion_finite_44100_0_circle,PASS,0,0,two output channels
+motion_power_44100_5_step,PASS,2.1942523365e-07,2e-06,unit mono probe; this is not total mixed audio power
+motion_finite_44100_5_step,PASS,0,0,two output channels
+motion_reach_44100_5_step,PASS,0,0,samples from first accepted target; not device latency
+motion_power_44100_5_circle,PASS,2.86122009641e-07,2e-06,unit mono probe; this is not total mixed audio power
+motion_finite_44100_5_circle,PASS,0,0,two output channels
+motion_power_44100_10_step,PASS,2.26589796704e-07,2e-06,unit mono probe; this is not total mixed audio power
+motion_finite_44100_10_step,PASS,0,0,two output channels
+motion_reach_44100_10_step,PASS,0,0,samples from first accepted target; not device latency
+motion_power_44100_10_circle,PASS,2.92842641691e-07,2e-06,unit mono probe; this is not total mixed audio power
+motion_finite_44100_10_circle,PASS,0,0,two output channels
+motion_power_44100_20_step,PASS,2.40307453936e-07,2e-06,unit mono probe; this is not total mixed audio power
+motion_finite_44100_20_step,PASS,0,0,two output channels
+motion_reach_44100_20_step,PASS,0,0,samples from first accepted target; not device latency
+motion_power_44100_20_circle,PASS,2.99630690925e-07,2e-06,unit mono probe; this is not total mixed audio power
+motion_finite_44100_20_circle,PASS,0,0,two output channels
+motion_power_48000_0_step,PASS,0,2e-06,unit mono probe; this is not total mixed audio power
+motion_finite_48000_0_step,PASS,0,0,two output channels
+motion_reach_48000_0_step,PASS,0,0,samples from first accepted target; not device latency
+motion_power_48000_0_circle,PASS,1.91205650424e-07,2e-06,unit mono probe; this is not total mixed audio power
+motion_finite_48000_0_circle,PASS,0,0,two output channels
+motion_power_48000_5_step,PASS,2.21117669952e-07,2e-06,unit mono probe; this is not total mixed audio power
+motion_finite_48000_5_step,PASS,0,0,two output channels
+motion_reach_48000_5_step,PASS,0,0,samples from first accepted target; not device latency
+motion_power_48000_5_circle,PASS,2.8946509012e-07,2e-06,unit mono probe; this is not total mixed audio power
+motion_finite_48000_5_circle,PASS,0,0,two output channels
+motion_power_48000_10_step,PASS,2.32031986513e-07,2e-06,unit mono probe; this is not total mixed audio power
+motion_finite_48000_10_step,PASS,0,0,two output channels
+motion_reach_48000_10_step,PASS,0,0,samples from first accepted target; not device latency
+motion_power_48000_10_circle,PASS,3.0450882571e-07,2e-06,unit mono probe; this is not total mixed audio power
+motion_finite_48000_10_circle,PASS,0,0,two output channels
+motion_power_48000_20_step,PASS,2.55331078503e-07,2e-06,unit mono probe; this is not total mixed audio power
+motion_finite_48000_20_step,PASS,0,0,two output channels
+motion_reach_48000_20_step,PASS,0,0,samples from first accepted target; not device latency
+motion_power_48000_20_circle,PASS,2.89571511436e-07,2e-06,unit mono probe; this is not total mixed audio power
+motion_finite_48000_20_circle,PASS,0,0,two output channels
+motion_power_96000_0_step,PASS,0,2e-06,unit mono probe; this is not total mixed audio power
+motion_finite_96000_0_step,PASS,0,0,two output channels
+motion_reach_96000_0_step,PASS,0,0,samples from first accepted target; not device latency
+motion_power_96000_0_circle,PASS,1.91205650424e-07,2e-06,unit mono probe; this is not total mixed audio power
+motion_finite_96000_0_circle,PASS,0,0,two output channels
+motion_power_96000_5_step,PASS,2.32031986513e-07,2e-06,unit mono probe; this is not total mixed audio power
+motion_finite_96000_5_step,PASS,0,0,two output channels
+motion_reach_96000_5_step,PASS,0,0,samples from first accepted target; not device latency
+motion_power_96000_5_circle,PASS,3.0450882571e-07,2e-06,unit mono probe; this is not total mixed audio power
+motion_finite_96000_5_circle,PASS,0,0,two output channels
+motion_power_96000_10_step,PASS,2.55331078503e-07,2e-06,unit mono probe; this is not total mixed audio power
+motion_finite_96000_10_step,PASS,0,0,two output channels
+motion_reach_96000_10_step,PASS,0,0,samples from first accepted target; not device latency
+motion_power_96000_10_circle,PASS,3.0450882571e-07,2e-06,unit mono probe; this is not total mixed audio power
+motion_finite_96000_10_circle,PASS,0,0,two output channels
+motion_power_96000_20_step,PASS,2.70252369594e-07,2e-06,unit mono probe; this is not total mixed audio power
+motion_finite_96000_20_step,PASS,0,0,two output channels
+motion_reach_96000_20_step,PASS,0,0,samples from first accepted target; not device latency
+motion_power_96000_20_circle,PASS,3.04016225527e-07,2e-06,unit mono probe; this is not total mixed audio power
+motion_finite_96000_20_circle,PASS,0,0,two output channels
+partition_0_0_37,PASS,0,2e-06,same sample-timestamped events; blocks split at event boundaries
+partition_0_0_256,PASS,0,2e-06,same sample-timestamped events; blocks split at event boundaries
+partition_0_0_512,PASS,0,2e-06,same sample-timestamped events; blocks split at event boundaries
+partition_0_0_1024,PASS,0,2e-06,same sample-timestamped events; blocks split at event boundaries
+partition_0_1_37,PASS,0,2e-06,same sample-timestamped events; blocks split at event boundaries
+partition_0_1_256,PASS,0,2e-06,same sample-timestamped events; blocks split at event boundaries
+partition_0_1_512,PASS,0,2e-06,same sample-timestamped events; blocks split at event boundaries
+partition_0_1_1024,PASS,0,2e-06,same sample-timestamped events; blocks split at event boundaries
+partition_5_0_37,PASS,0,2e-06,same sample-timestamped events; blocks split at event boundaries
+partition_5_0_256,PASS,0,2e-06,same sample-timestamped events; blocks split at event boundaries
+partition_5_0_512,PASS,0,2e-06,same sample-timestamped events; blocks split at event boundaries
+partition_5_0_1024,PASS,0,2e-06,same sample-timestamped events; blocks split at event boundaries
+partition_5_1_37,PASS,0,2e-06,same sample-timestamped events; blocks split at event boundaries
+partition_5_1_256,PASS,0,2e-06,same sample-timestamped events; blocks split at event boundaries
+partition_5_1_512,PASS,0,2e-06,same sample-timestamped events; blocks split at event boundaries
+partition_5_1_1024,PASS,0,2e-06,same sample-timestamped events; blocks split at event boundaries
+partition_20_0_37,PASS,0,2e-06,same sample-timestamped events; blocks split at event boundaries
+partition_20_0_256,PASS,0,2e-06,same sample-timestamped events; blocks split at event boundaries
+partition_20_0_512,PASS,0,2e-06,same sample-timestamped events; blocks split at event boundaries
+partition_20_0_1024,PASS,0,2e-06,same sample-timestamped events; blocks split at event boundaries
+partition_20_1_37,PASS,0,2e-06,same sample-timestamped events; blocks split at event boundaries
+partition_20_1_256,PASS,0,2e-06,same sample-timestamped events; blocks split at event boundaries
+partition_20_1_512,PASS,0,2e-06,same sample-timestamped events; blocks split at event boundaries
+partition_20_1_1024,PASS,0,2e-06,same sample-timestamped events; blocks split at event boundaries
+attenuation_callback_error,PASS,9.49949025691e-11,1e-07,tests existing callback only; no custom Linear model or Unity gain application claimed
+reset_snaps_to_target,PASS,0,1e-07,no stale ramp after reset
+dsp_gap_snaps_to_target,PASS,0,1e-07,discontinuous synthetic DSP tick
+sample_rate_change_snaps,PASS,0,1e-07,sample rate reinitialization
+invalid_transform_bypasses,PASS,0,0,safe stereo bypass
+invalid_transform_recovers,PASS,0,1e-07,normal transform after bypass
+antiphase_stereo_cancels_at_blend1,PASS,0,0,documents current stereo-to-mono mean; not a quality benefit
+blend0_preserves_stereo,PASS,0,0,4-band off and unity output gain
+zero_frames_preserves_output,PASS,0,0,zero-length callback
+unsupported_mono_safe_bypass,PASS,0,0,channel fallback
+independent_source_states,PASS,0,1e-07,interleaved independent source callbacks
+snapshot_short_buffer_rejected,PASS,0,0,snapshot ABI bounds
+extreme_crossovers_finite,PASS,0,0,finite output with clamped out-of-order crossovers
+four_band_neutral_max_abs_db,PASS,5.06417534054e-07,0.005,steady sine RMS; engineering regression tolerance not a perceptual threshold
+four_band_identical_channels,PASS,0,0,identical stereo inputs
+four_band_finite_outputs,PASS,0,0,all frequency-response runs

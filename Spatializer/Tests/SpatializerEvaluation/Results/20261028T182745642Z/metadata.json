@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "started_utc": "2026-10-28T18:27:54.3252299Z",
+  "project_root": "C:\\Users\\Hyeon2-400\\Spetializer\\Spatializer",
+  "git_commit": "fe74a5bf161efbaa5f7df0698ad4a44842a46819",
+  "git_status": [
+    "?? Docs/",
+    "?? Tests/"
+  ],
+  "source_files": [
+    {
+      "path": "Tests/SpatializerEvaluation/SpatializerEvaluation.cpp",
+      "sha256": "2220537C1F5DB73607E1B77DA099055E1907EDA2EAC2AFB9903D3E76705E822F"
+    },
+    {
+      "path": "Tests/SpatializerEvaluation/Run-Evaluation.ps1",
+      "sha256": "194CC40EC91ED4FCA9C8584650DCFD5BBA7B7726509BCE8D0F8457044ADBB1B9"
+    },
+    {
+      "path": "Tests/SpatializerEvaluation/analyze_results.py",
+      "sha256": "EC1B22ABF083DE6A05F4ED51BD1354576121A3DC530F665E08E85A3E89B5FE0B"
+    },
+    {
+      "path": "NativeCode/Plugin_Spatializer.cpp",
+      "sha256": "C20249DD70FAC1C848D3761FADF9B7E62244DEAA9CAACDA10431DF30C1A66AC4"
+    },
+    {
+      "path": "NativeCode/SpatializerDSP.h",
+      "sha256": "CA516E9F08E33BB7BFF904818132F02F79531FF669DC50E0AB73593A3EDD0286"
+    },
+    {
+      "path": "NativeCode/SpatializerParameters.h",
+      "sha256": "C482729A4E54461124FAB6F9E0AE630D78E3887B9FC861718232119AE436B2A8"
+    },
+    {
+      "path": "NativeCode/AudioPluginInterface.h",
+      "sha256": "0D4BAD016B64F6D848B03E77136A526CFA0AD91D459E413300DBB4E8B50F2452"
+    },
+    {
+      "path": "ProjectSettings/AudioManager.asset",
+      "sha256": "20AEEED5CF9D91BC3BC0EA6B750212D739C1DF508C116E8DC6437BAADEAA5297"
+    }
+  ],
+  "subject": "deployed_custom_spatializer_dll",
+  "dll_path": "C:\\Users\\Hyeon2-400\\Spetializer\\Spatializer\\Assets\\Plugins\\x86_64\\AudioPluginDemo.dll",
+  "dll_sha256": "7EC0F2011F6D4FC90BE94C5B98FDE399FCCC3EA990725F88738A2A59FF72B5CF",
+  "dll_source_match": "not_asserted; DLL hash identifies the actual tested binary",
+  "executable_sha256": "4B1C007DF113A593A4E08CA25BBD0E5272474D5BDA904BC048EA1C73E658843E",
+  "os": "Microsoft Windows NT 10.0.22000.0",
+  "process_architecture": "AMD64",
+  "processor": "Intel64 Family 6 Model 158 Stepping 9, GenuineIntel",
+  "logical_processors": 4,
+  "visual_studio": "C:\\Program Files\\Microsoft Visual Studio\\18\\Community",
+  "harness_flags": "/std:c++17 /O2 /fp:precise /EHsc /DNDEBUG",
+  "benchmark_repeats": 5,
+  "benchmark_blocks": 96,
+  "benchmark_scope": "single-thread offline native callback wall time; not Unity DSP CPU, audio device latency, or an underrun measurement",
+  "unavailable": [
+    "Unity engine DSP CPU",
+    "Unity Native SDK original comparison",
+    "Steam Audio comparison",
+    "end-to-end device latency",
+    "custom Linear attenuation model",
+    "listening/localization scores"
+  ],
+  "completed_utc": "2026-10-28T18:28:06.1828379Z",
+  "evaluation_exit_code": 0
+}

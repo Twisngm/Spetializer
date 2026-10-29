@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "validation_passed": true,
+  "data_consistency_checks": 500,
+  "checks": 134,
+  "failures": [],
+  "measured": {
+    "geometry_position_max_error_unity_units": 4.76837158203e-07,
+    "panning_max_coefficient_error": 1.87742393804e-07,
+    "motion_max_equal_power_error": 3.0450882571e-07,
+    "partition_max_output_error": 0.0,
+    "neutral_four_band_max_abs_gain_db": 5.06417534054e-07,
+    "attenuation_callback_max_error": 9.49949025691e-11
+  },
+  "scenario_counts": {
+    "geometry": 70,
+    "panning": 657,
+    "motion": 24,
+    "partition": 24,
+    "attenuation": 18,
+    "benchmark": 160,
+    "benchmark_raw": 15360
+  },
+  "subject": "deployed_custom_spatializer_dll",
+  "dll_sha256": "7EC0F2011F6D4FC90BE94C5B98FDE399FCCC3EA990725F88738A2A59FF72B5CF",
+  "scope": "single-thread offline native callback wall time; not Unity DSP CPU, audio device latency, or an underrun measurement",
+  "unavailable": [
+    "Unity engine DSP CPU",
+    "Unity Native SDK original comparison",
+    "Steam Audio comparison",
+    "end-to-end device latency",
+    "custom Linear attenuation model",
+    "listening/localization scores"
+  ]
+}

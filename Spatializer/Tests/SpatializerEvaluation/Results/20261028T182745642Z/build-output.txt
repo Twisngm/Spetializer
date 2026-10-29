@@ -1,0 +1,8 @@
+**********************************************************************
+** Visual Studio 2026 Developer Command Prompt v18.10.3
+** Copyright (c) 2026 Microsoft Corporation
+**********************************************************************
+[vcvarsall.bat] Environment initialized for: 'x64'
+SpatializerEvaluation.cpp
+C:\Users\Hyeon2-400\Spetializer\Spatializer\Tests\SpatializerEvaluation\../../NativeCode/AudioPluginInterface.h(247): warning C4201: 비표준 확장이 사용됨: 구조체/공용 구조체의 이름이 없습니다.
+C:\Users\Hyeon2-400\Spetializer\Spatializer\Tests\SpatializerEvaluation\SpatializerEvaluation.cpp(256): warning C4244: '=': 'double'에서 'float'(으)로 변환하면서 데이터가 손실될 수 있습니다.

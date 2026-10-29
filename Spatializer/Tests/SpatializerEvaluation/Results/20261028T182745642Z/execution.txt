@@ -1,0 +1,6 @@
+Subject: Demo Spatializer; API=66563; parameters=21; MSVC=195136260
+Parameter ABI and validation complete
+Geometry and static panning complete
+Motion and partition measurements complete
+Attenuation callback and DSP regression complete
+Checks: 134; failures: 0; benchmark checksum: -329.483

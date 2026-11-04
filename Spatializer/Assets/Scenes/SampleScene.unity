@@ -491,10 +491,10 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 9eabbbd7906d46b395a74c8ce302d105, type: 3}
-  m_Name:
-  m_EditorClassIdentifier:
+  m_Name: 
+  m_EditorClassIdentifier: 
   enableFourBandProcessing: 0
-  lowCrossover: 250
+  lowCrossover: 200
   midCrossover: 2000
   highCrossover: 6000
   low:

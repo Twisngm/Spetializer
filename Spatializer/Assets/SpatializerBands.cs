@@ -5,6 +5,13 @@ using UnityEngine;
 [RequireComponent(typeof(AudioSource))]
 public sealed class SpatializerBands : MonoBehaviour
 {
+    public const float DefaultGain = 1f;
+    public const float DefaultSaturationDrive = 1f;
+    public const float DefaultSaturationWet = 0f;
+    public const float DefaultLowCrossover = 250f;
+    public const float DefaultMidCrossover = 2000f;
+    public const float DefaultHighCrossover = 6000f;
+
     // 보조용 sealed class
     // SpatializerGain이 전체 출력 Gain으로 3번을 사용하니 변경 금지
     private const int EnableIndex = 4;
@@ -17,24 +24,24 @@ public sealed class SpatializerBands : MonoBehaviour
     [Serializable]
     private sealed class BandSettings
     {
-        [Range(0f, 4f)] public float gain = 1f;
-        [Range(1f, 8f)] public float saturationDrive = 1f;
-        [Range(0f, 1f)] public float saturationWet;
+        [Range(0f, 4f)] public float gain = DefaultGain;
+        [Range(1f, 8f)] public float saturationDrive = DefaultSaturationDrive;
+        [Range(0f, 1f)] public float saturationWet = DefaultSaturationWet;
 
         public void Validate()
         {
-            gain = FiniteClamp(gain, 0f, 4f, 1f);
-            saturationDrive = FiniteClamp(saturationDrive, 1f, 8f, 1f);
-            saturationWet = FiniteClamp(saturationWet, 0f, 1f, 0f);
+            gain = FiniteClamp(gain, 0f, 4f, DefaultGain);
+            saturationDrive = FiniteClamp(saturationDrive, 1f, 8f, DefaultSaturationDrive);
+            saturationWet = FiniteClamp(saturationWet, 0f, 1f, DefaultSaturationWet);
         }
     }
 
     [SerializeField] private bool enableFourBandProcessing = false;
 
     [Header("Crossover frequencies")]
-    [SerializeField, Range(20f, 20000f)] private float lowCrossover = 250f;
-    [SerializeField, Range(20f, 20000f)] private float midCrossover = 2000f;
-    [SerializeField, Range(20f, 20000f)] private float highCrossover = 6000f;
+    [SerializeField, Range(20f, 20000f)] private float lowCrossover = DefaultLowCrossover;
+    [SerializeField, Range(20f, 20000f)] private float midCrossover = DefaultMidCrossover;
+    [SerializeField, Range(20f, 20000f)] private float highCrossover = DefaultHighCrossover;
 
     [Header("Band effects")]
     [SerializeField] private BandSettings low = new BandSettings();
@@ -73,9 +80,9 @@ public sealed class SpatializerBands : MonoBehaviour
 
     private void ValidateSettings()
     {
-        lowCrossover = FiniteClamp(lowCrossover, 20f, 19998f, 250f);
-        midCrossover = FiniteClamp(midCrossover, lowCrossover + 1f, 19999f, 2000f);
-        highCrossover = FiniteClamp(highCrossover, midCrossover + 1f, 20000f, 6000f);
+        lowCrossover = FiniteClamp(lowCrossover, 20f, 19998f, DefaultLowCrossover);
+        midCrossover = FiniteClamp(midCrossover, lowCrossover + 1f, 19999f, DefaultMidCrossover);
+        highCrossover = FiniteClamp(highCrossover, midCrossover + 1f, 20000f, DefaultHighCrossover);
         motionSmoothingMs = FiniteClamp(motionSmoothingMs, 0f, 100f, 5f);
         if (low == null) low = new BandSettings();
         if (lowMid == null) lowMid = new BandSettings();

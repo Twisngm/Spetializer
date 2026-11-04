@@ -348,6 +348,7 @@ GameObject:
   - component: {fileID: 1834597021}
   - component: {fileID: 1834597020}
   - component: {fileID: 1834597022}
+  - component: {fileID: 1834597023}
   m_Layer: 0
   m_Name: TestSource
   m_TagString: Untagged
@@ -480,6 +481,39 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   gain: 0.88
+--- !u!114 &1834597023
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1834597019}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9eabbbd7906d46b395a74c8ce302d105, type: 3}
+  m_Name:
+  m_EditorClassIdentifier:
+  enableFourBandProcessing: 0
+  lowCrossover: 250
+  midCrossover: 2000
+  highCrossover: 6000
+  low:
+    gain: 1
+    saturationDrive: 1
+    saturationWet: 0
+  lowMid:
+    gain: 1
+    saturationDrive: 1
+    saturationWet: 0
+  highMid:
+    gain: 1
+    saturationDrive: 1
+    saturationWet: 0
+  high:
+    gain: 1
+    saturationDrive: 1
+    saturationWet: 0
+  motionSmoothingMs: 5
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0

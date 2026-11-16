@@ -28,7 +28,8 @@ flowchart LR
     Sum --> Dry["Stereo 2D component"]
     Spatial --> Blend["Spatial Blend"]
     Dry --> Blend
-    Blend --> Gain["Output Gain"]
+    Blend --> DistanceGain["Distance Gain"]
+    DistanceGain --> Gain["Output Gain"]
     Gain --> Output["Stereo output"]
 ```
 
@@ -111,6 +112,9 @@ Saturation은 체인 동작을 확인할 수 있는 선택적 예제다. Gain �
 | 12–15 | 대역별 Saturation Drive | 모두 1 |
 | 16–19 | 대역별 Saturation Wet | 모두 0 |
 | 20 | Motion Smoothing | 5ms |
+| 21 | 자유음장 거리 감쇠 활성화 | 0 |
+
+Panning 이후 거리 감쇠의 적용 순서와 Unity 설정은 [자유음장 거리 감쇠](SpatializerDistanceAttenuation.md)에 정리했다.
 
 native setter는 범위를 제한하고 NaN / Infinity를 거부한다. 파라미터는 atomic으로 전달하고 각 오디오 블록 시작 시 읽는다. 경계의 실제 사용값은 당시 sampleRate에 맞게 추가 보정되며 getter는 요청값을 반환한다.
 

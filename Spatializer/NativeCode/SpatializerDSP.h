@@ -60,7 +60,7 @@ namespace SpatializerDSP
     struct StereoFrame { float left, right; };
 
     struct Position { float x, y, z; };
-    struct SpatialControls { float pan, blend, gain; };
+    struct SpatialControls { float pan, blend, gain, distanceGain; };
 
     class MotionInterpolator
     {
@@ -75,6 +75,7 @@ namespace SpatializerDSP
             if (!initialized || sampleRate != rate)
             {
                 pan.Snap(target.pan); blend.Snap(target.blend); gain.Snap(target.gain);
+                distanceGain.Snap(target.distanceGain);
             }
             else
             {
@@ -82,15 +83,16 @@ namespace SpatializerDSP
                 pan.SetTarget(target.pan, samples);
                 blend.SetTarget(target.blend, samples);
                 gain.SetTarget(target.gain, samples);
+                distanceGain.SetTarget(target.distanceGain, samples);
             }
             initialized = true;
             sampleRate = rate;
         }
-        SpatialControls Next() { return { pan.Next(), blend.Next(), gain.Next() }; }
+        SpatialControls Next() { return { pan.Next(), blend.Next(), gain.Next(), distanceGain.Next() }; }
         Position PreviousPosition() const { return previous; }
     private:
         Position previous, position;
-        LinearRamp pan, blend, gain;
+        LinearRamp pan, blend, gain, distanceGain;
         float sampleRate;
         bool initialized;
     };

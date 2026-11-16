@@ -7,6 +7,8 @@
 
 namespace Spatializer
 {
+    constexpr unsigned int kDistanceAttenuationFlagApiVersion = 0x010400;
+
     // Single shared snapshot: listener-local x/y/z, azimuth/elevation in degrees.
     // Retains the last published values until the native library is unloaded.
     static float currentSpatialization[5] = { 0 };
@@ -31,6 +33,7 @@ namespace Spatializer
     struct EffectData
     {
         std::atomic<float> p[P_NUM];
+        std::atomic<float> legacyDistanceGain{ 1.0f };
         SpatializerDSP::FourBandProcessor multiband;
         SpatializerDSP::MotionInterpolator motion;
         UInt64 nextDspTick;
@@ -50,7 +53,6 @@ namespace Spatializer
     {
         float x, y, z;
         float horizontalDistance;
-        float distance; // 추후 감쇠모델 적용 시 사용 예정. 현재는 연산만 진행하고 적용 x
         float azimuthDegrees;
         float elevationDegrees;
     };
@@ -73,7 +75,6 @@ namespace Spatializer
         geometry.y = m[1] * px + m[5] * py + m[9] * pz + m[13];
         geometry.z = m[2] * px + m[6] * py + m[10] * pz + m[14];
         geometry.horizontalDistance = sqrtf(geometry.x * geometry.x + geometry.z * geometry.z);
-        geometry.distance = sqrtf(geometry.x * geometry.x + geometry.y * geometry.y + geometry.z * geometry.z);
 
         float azimuth = 0.0f;
         if (geometry.horizontalDistance > 1.0e-6f)
@@ -134,18 +135,36 @@ namespace Spatializer
             const ParameterDefinition& p = Parameters[i];
             AudioPluginUtil::RegisterParameter(definition, p.name, p.unit, p.minimum, p.maximum, p.initial, 1, 1, i, p.description);
         }
-        definition.flags |= UnityAudioEffectDefinitionFlags_IsSpatializer;
+        definition.flags |= UnityAudioEffectDefinitionFlags_IsSpatializer |
+            UnityAudioEffectDefinitionFlags_AppliesDistanceAttenuation;
         definition.reset = ResetCallback;
         return numparams;
+    }
+
+    static float FreeFieldDistanceGain(double distance)
+    {
+        // One Unity unit is one meter. Sample amplitude follows sound pressure (1/r).
+        constexpr double referenceDistance = 1.0;
+        return distance > referenceDistance ? static_cast<float>(referenceDistance / distance) : 1.0f;
     }
 
     static UNITY_AUDIODSP_RESULT UNITY_AUDIODSP_CALLBACK DistanceAttenuationCallback(UnityAudioEffectState* state, float distanceIn, float attenuationIn, float* attenuationOut)
     {
         EffectData* data = state->GetEffectData<EffectData>();
-        *attenuationOut =
+        const float legacyGain =
             data->p[P_AUDIOSRCATTN].load(std::memory_order_relaxed) * attenuationIn +
             data->p[P_FIXEDVOLUME].load(std::memory_order_relaxed) +
             data->p[P_CUSTOMFALLOFF].load(std::memory_order_relaxed) * (1.0f / AudioPluginUtil::FastMax(1.0f, distanceIn));
+        data->legacyDistanceGain.store(SpatializerDSP::IsFinite(legacyGain) ? legacyGain : 0.0f, std::memory_order_relaxed);
+
+        // With AppliesDistanceAttenuation, Unity uses this value for audibility, while DSP applies the gain.
+        *attenuationOut = legacyGain;
+        if (data->p[P_FREE_FIELD_ATTENUATION].load(std::memory_order_relaxed) >= 0.5f)
+        {
+            *attenuationOut = SpatializerDSP::IsFinite(distanceIn) && distanceIn >= 0.0f
+                ? FreeFieldDistanceGain(distanceIn)
+                : (SpatializerDSP::IsFinite(attenuationIn) ? SpatializerDSP::Clamp(attenuationIn, 0.0f, 1.0f) : 0.0f);
+        }
         return UNITY_AUDIODSP_OK;
     }
 
@@ -153,10 +172,10 @@ namespace Spatializer
     {
         EffectData* effectdata = new EffectData;
         state->effectdata = effectdata;
-        if (IsHostCompatible(state) && state->spatializerdata != NULL)
-            state->spatializerdata->distanceattenuationcallback = DistanceAttenuationCallback;
         for (int i = 0; i < P_NUM; ++i)
             effectdata->p[i].store(Parameters[i].initial, std::memory_order_relaxed);
+        if (IsHostCompatible(state) && state->spatializerdata != NULL)
+            state->spatializerdata->distanceattenuationcallback = DistanceAttenuationCallback;
         return UNITY_AUDIODSP_OK;
     }
 
@@ -241,17 +260,30 @@ namespace Spatializer
         }
         StoreCurrentSpatialization(geometry.x, geometry.y, geometry.z, geometry.azimuthDegrees, geometry.elevationDegrees);
 
+        float distanceGain = 1.0f;
+        // Hosts predating the flag still apply the callback's distance gain themselves.
+        if (state->hostapiversion >= kDistanceAttenuationFlagApiVersion)
+        {
+            if (parameters[P_FREE_FIELD_ATTENUATION] >= 0.5f)
+            {
+                const double x = geometry.x, y = geometry.y, z = geometry.z;
+                distanceGain = FreeFieldDistanceGain(std::sqrt(x * x + y * y + z * z));
+            }
+            else
+                distanceGain = data->legacyDistanceGain.load(std::memory_order_relaxed);
+        }
+
         const SpatializerDSP::Position position = { geometry.x, geometry.y, geometry.z };
         const SpatializerDSP::SpatialControls target = {
             CalculatePan(geometry),
             SpatializerDSP::Clamp(state->spatializerdata->spatialblend, 0.0f, 1.0f),
-            parameters[P_GAIN]
+            parameters[P_GAIN],
+            distanceGain
         };
         data->motion.Configure(position, target, sampleRate, parameters[P_MOTION_SMOOTHING_MS]);
 
         float previousPan = 2.0f; // 첫 샘플에서 반드시 좌우 계수를 계산하도록 유효 범위 밖의 값으로 시작
         StereoGains panGains = { 0, 0 };
-        // 자체 모델 개발 이전까지 Distance 추가 감쇠 x
         for (unsigned int n = 0; n < length; ++n)
         {
             const SpatializerDSP::StereoFrame input = { inbuffer[n * 2], inbuffer[n * 2 + 1] };
@@ -269,8 +301,9 @@ namespace Spatializer
             const float mono = 0.5f * (left + right);
             const float pannedLeft = mono * panGains.left;
             const float pannedRight = mono * panGains.right;
-            outbuffer[n * 2] = (left * dryMix + pannedLeft * controls.blend) * controls.gain;
-            outbuffer[n * 2 + 1] = (right * dryMix + pannedRight * controls.blend) * controls.gain;
+            const float outputGain = controls.gain * (dryMix + controls.blend * controls.distanceGain);
+            outbuffer[n * 2] = (left * dryMix + pannedLeft * controls.blend) * outputGain;
+            outbuffer[n * 2 + 1] = (right * dryMix + pannedRight * controls.blend) * outputGain;
         }
 
         return UNITY_AUDIODSP_OK;

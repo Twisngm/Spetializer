@@ -349,6 +349,7 @@ GameObject:
   - component: {fileID: 1834597020}
   - component: {fileID: 1834597022}
   - component: {fileID: 1834597023}
+  - component: {fileID: 1834597024}
   m_Layer: 0
   m_Name: TestSource
   m_TagString: Untagged
@@ -371,7 +372,7 @@ AudioSource:
   m_PlayOnAwake: 1
   m_Volume: 1
   m_Pitch: 1
-  Loop: 0
+  Loop: 1
   Mute: 0
   Spatialize: 1
   SpatializePostEffects: 1
@@ -493,7 +494,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 9eabbbd7906d46b395a74c8ce302d105, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  enableFourBandProcessing: 0
+  enableFourBandProcessing: 1
   lowCrossover: 200
   midCrossover: 2000
   highCrossover: 6000
@@ -514,6 +515,18 @@ MonoBehaviour:
     saturationDrive: 1
     saturationWet: 0
   motionSmoothingMs: 5
+--- !u!114 &1834597024
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1834597019}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5c72dd5a726d4385882684073ee9b2df, type: 3}
+  m_Name:
+  m_EditorClassIdentifier:
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0

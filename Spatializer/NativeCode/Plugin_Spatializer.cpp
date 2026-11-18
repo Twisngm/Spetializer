@@ -224,18 +224,22 @@ namespace Spatializer
     UNITY_AUDIODSP_RESULT UNITY_AUDIODSP_CALLBACK ProcessCallback(UnityAudioEffectState* state, float* inbuffer, float* outbuffer, unsigned int length, int inchannels, int outchannels)
     {
         if (length == 0) return UNITY_AUDIODSP_OK;
-        // Check that I/O formats are right and that the host API supports this feature
-        if (inchannels != 2 || outchannels != 2 ||
-            !IsHostCompatible(state) || state->spatializerdata == NULL)
+        EffectData* data = state->GetEffectData<EffectData>();
+        const bool hasSpatializer = IsHostCompatible(state) && state->spatializerdata != NULL;
+        const bool isStereo = inchannels == 2 && outchannels == 2;
+        const bool appliesDistanceGain = hasSpatializer && state->hostapiversion >= kDistanceAttenuationFlagApiVersion;
+        const SpatialGeometry geometry = hasSpatializer ? GeometryCalc(*state->spatializerdata) : SpatialGeometry{};
+        if (!hasSpatializer || (!isStereo && !appliesDistanceGain) ||
+            !SpatializerDSP::IsFinite(geometry.x) || !SpatializerDSP::IsFinite(geometry.y) ||
+            !SpatializerDSP::IsFinite(geometry.z) || !SpatializerDSP::IsFinite(state->spatializerdata->spatialblend))
         {
-            state->GetEffectData<EffectData>()->Reset();
+            data->Reset();
             for (unsigned int n = 0; n < length; ++n)
                 for (int c = 0; c < outchannels; ++c)
-                    outbuffer[n * outchannels + c] = c < inchannels ? inbuffer[n * inchannels + c] : 0.0f; // in/out 채널 구성이 다를 경우 무음 처리
+                    outbuffer[n * outchannels + c] = c < inchannels ? inbuffer[n * inchannels + c] : 0.0f;
             return UNITY_AUDIODSP_OK;
         }
 
-        EffectData* data = state->GetEffectData<EffectData>();
         // 음원이 가상화되거나 멈춘 뒤 재개될 때 오래된 위치 / 필터 잔향 재사용을 막는 부분
         if (data->hasDspTick && state->currdsptick != data->nextDspTick)
             data->Reset();
@@ -245,24 +249,12 @@ namespace Spatializer
         float parameters[P_NUM];
         for (int i = 0; i < P_NUM; ++i)
             parameters[i] = data->p[i].load(std::memory_order_relaxed);
-        SpatializerDSP::BandSettings bands[SpatializerDSP::BandCount];
-        for (int b = 0; b < SpatializerDSP::BandCount; ++b)
-            bands[b] = { parameters[P_BAND_GAIN_LOW + b], parameters[P_BAND_DRIVE_LOW + b], parameters[P_BAND_WET_LOW + b] };
         const float sampleRate = state->samplerate >= 1000 ? static_cast<float>(state->samplerate) : 48000.0f;
-        data->multiband.Configure(sampleRate, &parameters[P_CROSSOVER_LOW], parameters[P_MULTIBAND] >= 0.5f, bands);
-        const SpatialGeometry geometry = GeometryCalc(*state->spatializerdata);
-        if (!SpatializerDSP::IsFinite(geometry.x) || !SpatializerDSP::IsFinite(geometry.y) ||
-            !SpatializerDSP::IsFinite(geometry.z) || !SpatializerDSP::IsFinite(state->spatializerdata->spatialblend))
-        {
-            data->Reset();
-            if (inbuffer != outbuffer) memcpy(outbuffer, inbuffer, sizeof(float) * length * 2);
-            return UNITY_AUDIODSP_OK;
-        }
         StoreCurrentSpatialization(geometry.x, geometry.y, geometry.z, geometry.azimuthDegrees, geometry.elevationDegrees);
 
         float distanceGain = 1.0f;
         // Hosts predating the flag still apply the callback's distance gain themselves.
-        if (state->hostapiversion >= kDistanceAttenuationFlagApiVersion)
+        if (appliesDistanceGain)
         {
             if (parameters[P_FREE_FIELD_ATTENUATION] >= 0.5f)
             {
@@ -281,6 +273,25 @@ namespace Spatializer
             distanceGain
         };
         data->motion.Configure(position, target, sampleRate, parameters[P_MOTION_SMOOTHING_MS]);
+
+        if (!isStereo)
+        {
+            data->multiband.Reset();
+            // Modern hosts delegate attenuation even when the stereo effects are bypassed.
+            for (unsigned int n = 0; n < length; ++n)
+            {
+                const SpatializerDSP::SpatialControls controls = data->motion.Next();
+                const float attenuation = (1.0f - controls.blend) + controls.blend * controls.distanceGain;
+                for (int c = 0; c < outchannels; ++c)
+                    outbuffer[n * outchannels + c] = c < inchannels ? inbuffer[n * inchannels + c] * attenuation : 0.0f;
+            }
+            return UNITY_AUDIODSP_OK;
+        }
+
+        SpatializerDSP::BandSettings bands[SpatializerDSP::BandCount];
+        for (int b = 0; b < SpatializerDSP::BandCount; ++b)
+            bands[b] = { parameters[P_BAND_GAIN_LOW + b], parameters[P_BAND_DRIVE_LOW + b], parameters[P_BAND_WET_LOW + b] };
+        data->multiband.Configure(sampleRate, &parameters[P_CROSSOVER_LOW], parameters[P_MULTIBAND] >= 0.5f, bands);
 
         float previousPan = 2.0f; // 첫 샘플에서 반드시 좌우 계수를 계산하도록 유효 범위 밖의 값으로 시작
         StereoGains panGains = { 0, 0 };
@@ -301,9 +312,11 @@ namespace Spatializer
             const float mono = 0.5f * (left + right);
             const float pannedLeft = mono * panGains.left;
             const float pannedRight = mono * panGains.right;
-            const float outputGain = controls.gain * (dryMix + controls.blend * controls.distanceGain);
-            outbuffer[n * 2] = (left * dryMix + pannedLeft * controls.blend) * outputGain;
-            outbuffer[n * 2 + 1] = (right * dryMix + pannedRight * controls.blend) * outputGain;
+            const float mixedLeft = (left * dryMix + pannedLeft * controls.blend) * controls.gain;
+            const float mixedRight = (right * dryMix + pannedRight * controls.blend) * controls.gain;
+            const float attenuation = dryMix + controls.blend * controls.distanceGain;
+            outbuffer[n * 2] = mixedLeft * attenuation;
+            outbuffer[n * 2 + 1] = mixedRight * attenuation;
         }
 
         return UNITY_AUDIODSP_OK;

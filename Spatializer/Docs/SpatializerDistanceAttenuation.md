@@ -18,9 +18,9 @@ Unity 1유닛을 1m로 해석한다. 유효한 3차원 거리 `d`에 대해 거�
 
 ## 신호 처리 순서
 
-Unity 2017.1 이후의 오디오 플러그인 API에서는 4밴드 처리, Panning, 2D/3D 혼합을 마친 좌우 출력에 거리 Gain을 적용한다. 새추레이션은 거리 감쇠 이전의 신호를 받아 거리별 진폭 비율을 유지한다. 거리 Gain은 기존 `Motion Smoothing Ms` 설정에 따라 보간한다.
+Unity 2017.1 이후의 오디오 플러그인 API에서 처리 순서는 4밴드 처리(새추레이션 포함) → Panning → 2D/3D 혼합 → 출력 Gain → 거리 Gain이다. 마지막 단계에서 동일한 거리 Gain을 좌우 출력에 곱해 거리별 진폭 비율을 유지한다. 스테레오 이펙트를 우회하는 채널 구성에서도 입력을 출력 채널에 대응시킨 뒤 거리 Gain을 적용한다. 거리 Gain은 기존 `Motion Smoothing Ms` 설정에 따라 보간한다.
 
-Spatial Blend가 1이면 거리 Gain을 그대로 적용한다. 중간 Blend에서는 `(1 − blend) + blend × 거리 Gain`을 사용하고, Blend가 0이면 거리 Gain은 1이다. Unity의 거리 감쇠 콜백은 음원 가청도와 voice 우선순위 계산에 필요한 값을 전달한다. [Unity Audio Spatializer SDK](https://docs.unity3d.com/6000.0/Documentation/Manual/AudioSpatializerSDK.html)
+Spatial Blend가 1이면 거리 Gain을 그대로 적용한다. 중간 Blend에서는 `(1 − blend) + blend × 거리 Gain`을 사용하고, Blend가 0이면 거리 Gain은 1이다. Unity의 거리 감쇠 콜백은 음원 가청도와 voice 우선순위 계산에 필요한 값을 전달한다. Unity 2017.1 이전 API에서는 호스트가 콜백으로 받은 거리 Gain을 적용한다. [Unity Audio Spatializer SDK](https://docs.unity3d.com/6000.0/Documentation/Manual/AudioSpatializerSDK.html)
 
 ## Unity에서 사용
 
@@ -29,3 +29,9 @@ Spatial Blend가 1이면 거리 Gain을 그대로 적용한다. 중간 Blend에�
 3. 같은 방향에서 리스너와 소스 사이를 1m, 2m, 4m로 바꿔 비교한다. 완전한 3D 음원의 감쇠를 비교하려면 Spatial Blend를 1로 둔다.
 
 컴포넌트를 켜면 네이티브 파라미터 21이 활성화된다. 플러그인은 소스와 리스너 사이의 3차원 거리로 Gain을 계산한다. 기준 거리는 1m로 고정되며 AudioSource의 Max Distance를 지나도 `1/r`로 계속 줄어든다. 컴포넌트를 끄면 Unity가 전달한 AudioSource Rolloff와 기존 감쇠 파라미터로 계산한 Gain을 사용한다. 플러그인의 출력 Gain은 소스 레벨을 별도로 조정한다.
+
+## 공중 음향 레벨 볼륨
+
+`SampleScene`을 재생하면 음원 주변 공중에 반투명 볼륨이 나타난다. 높은 레벨은 주황색으로, 낮은 레벨은 청록색과 파란색으로 표시한다. 앞쪽 불투명 오브젝트의 깊이에서 렌더링 광선을 끊어 뒤쪽 공중 색을 가린다. Space로 음원을 멈추면 직접음 색이 사라지고 잔향 추정치가 옅어진다. Space를 다시 누르면 클립이 재생된다.
+
+다른 음원에도 적용하려면 AudioSource의 `Spatialize Post Effects`를 켜고, `Spatial Level Map`에 표시용 카메라, `Spatializer/Acoustic Volume` 셰이더와 Unity 단위 큐브 메시를 지정한다. 컴포넌트는 감쇠 전 RMS에서 자유음장 직접음과 잔향 레벨을 추정하고, Built-in Render Pipeline의 카메라 깊이 텍스처를 사용한다. 반경, 볼륨 밀도, 레벨 눈금과 잔향 감쇠 시간을 Inspector에서 조정할 수 있다. 현재 계산은 전파 지연 없이 구형 자유음장을 사용한다.

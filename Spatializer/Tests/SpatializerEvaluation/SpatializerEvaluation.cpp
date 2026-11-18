@@ -68,12 +68,12 @@ class Source
 public:
     UnityAudioEffectState state{};
     UnityAudioSpatializerData spatial{};
-    explicit Source(int sampleRate = 48000)
+    explicit Source(int sampleRate = 48000, unsigned int hostApi = UNITY_AUDIO_PLUGIN_API_VERSION)
     {
         Identity(spatial.listenermatrix); Identity(spatial.sourcematrix);
         spatial.spatialblend = 1; spatial.minDistance = 1; spatial.maxDistance = 500;
         state.structsize = sizeof(state); state.samplerate = sampleRate;
-        state.hostapiversion = UNITY_AUDIO_PLUGIN_API_VERSION;
+        state.hostapiversion = hostApi;
         state.flags = UnityAudioEffectStateFlags_IsPlaying;
         state.internal = this; // Non-null synthetic host token; plugin must never dereference it.
         state.spatializerdata = &spatial; state.dspbuffersize = 1024;
@@ -93,6 +93,14 @@ public:
         float value = 0;
         Require(definition->getfloatparameter(&state, parameter, &value, nullptr) == UNITY_AUDIODSP_OK, "get parameter failed");
         return value;
+    }
+    float ReportDistance(float distance, float incoming)
+    {
+        Require(spatial.distanceattenuationcallback != nullptr, "distance callback missing");
+        float gain = 0;
+        Require(spatial.distanceattenuationcallback(&state, distance, incoming, &gain) == UNITY_AUDIODSP_OK,
+                "distance callback failed");
+        return gain;
     }
     void Position(double x, double y, double z)
     {
@@ -292,15 +300,126 @@ void AttenuationChecks()
     double maximum=0;
     for(int mode:{0,1}) for(double distance:{0.,0.5,1.,2.,4.,8.,16.,64.,500.})
     {
-        Source source;Require(source.spatial.distanceattenuationcallback!=nullptr,"distance callback missing");
+        Source source;
         if(mode==1) { source.Set(Spatializer::P_AUDIOSRCATTN,0);source.Set(Spatializer::P_CUSTOMFALLOFF,1); }
-        constexpr float incoming=0.37f;float actual=0;
-        Require(source.spatial.distanceattenuationcallback(&source.state,static_cast<float>(distance),incoming,&actual)==UNITY_AUDIODSP_OK,"attenuation callback failed");
+        constexpr float incoming=0.37f;
+        const float actual=source.ReportDistance(static_cast<float>(distance),incoming);
         const double expected=mode==0?incoming:1/std::max(1.0,distance);
-        const double error=std::abs(actual-expected);maximum=std::max(maximum,error);
+        const double error=std::abs(actual-expected);
+        maximum=std::isfinite(error)?std::max(maximum,error):std::numeric_limits<double>::infinity();
         file<<(mode==0?"default_host_passthrough":"existing_custom_inverse_enabled")<<','<<distance<<','<<incoming<<','<<expected<<','<<actual<<','<<error<<",callback_only_not_unity_rendered_audio\n";
     }
     Check("attenuation_callback_error",maximum,1e-7,"tests existing callback only; no custom Linear model or Unity gain application claimed");
+}
+
+void DistanceOutputChecks()
+{
+    Check("distance_delegation_flag",
+          (definition->flags & UnityAudioEffectDefinitionFlags_AppliesDistanceAttenuation) ? 0 : 1, 0,
+          "modern host delegates gain to the spatializer");
+
+    constexpr int frames = 256;
+    std::array<float, 2 * frames> input{}, reference{}, attenuated{};
+    for (int n = 0; n < frames; ++n)
+    {
+        input[2 * n] = static_cast<float>(0.7 * std::sin(n * 0.08) + 0.2 * std::sin(n * 1.3));
+        input[2 * n + 1] = static_cast<float>(0.4 * std::sin(n * 0.32) + 0.2 * std::sin(n * 2.1));
+    }
+
+    for (int bands : {0, 1}) for (float blend : {0.f, 0.5f, 1.f})
+    for (float distance : {0.f, 0.5f, 1.f, 2.f, 4.f, 8.f, 512.f})
+    {
+        Source unattenuated, inverse;
+        for (Source* source : {&unattenuated, &inverse})
+        {
+            source->Set(Spatializer::P_MOTION_SMOOTHING_MS, 0);
+            source->Set(Spatializer::P_GAIN, 1.75f);
+            source->Set(Spatializer::P_MULTIBAND, static_cast<float>(bands));
+            source->spatial.spatialblend = blend;
+            source->Position(0.36 * distance, 0.8 * distance, 0.48 * distance);
+            for (int band = 0; band < 4; ++band)
+            {
+                source->Set(Spatializer::P_BAND_DRIVE_LOW + band, 8);
+                source->Set(Spatializer::P_BAND_WET_LOW + band, 1);
+            }
+        }
+        inverse.Set(Spatializer::P_FREE_FIELD_ATTENUATION, 1);
+        // A deliberately different host value reveals any reliance on the audibility callback in DSP.
+        const double inverseGain = 1 / std::max(1.0, static_cast<double>(distance));
+        const std::string scenario = "_bands" + std::to_string(bands) + "_blend" +
+            std::to_string(blend) + "_distance" + std::to_string(distance);
+        Check("free_field_audibility" + scenario,
+              std::abs(inverse.ReportDistance(distance, 0.37f) - inverseGain), 1e-7, "callback reports 1/r");
+        unattenuated.Process(input.data(), reference.data(), frames);
+        inverse.Process(input.data(), attenuated.data(), frames);
+        const double scale = (1 - blend) + blend * inverseGain;
+        double peak = 0, error = 0;
+        for (size_t i = 0; i < attenuated.size(); ++i)
+        {
+            Require(std::isfinite(reference[i]) && std::isfinite(attenuated[i]), "nonfinite distance output");
+            peak = std::max(peak, std::abs(static_cast<double>(reference[i])));
+            error = std::max(error, std::abs(attenuated[i] - reference[i] * scale));
+        }
+        Check("distance_after_effects" + scenario, peak > 0.01 ? error : 1.0, 2e-6,
+              "scaled final stereo output with spatial blend and saturation");
+    }
+
+    Source toggle;
+    toggle.Set(Spatializer::P_MOTION_SMOOTHING_MS, 0);
+    toggle.Position(-4, 0, 0);
+    const float legacyCallback = toggle.ReportDistance(4, 0.37f);
+    Check("legacy_audio_source_gain_applied", std::abs(legacyCallback - 0.37f) +
+          std::abs(toggle.Probe()[0] - 0.37f), 1e-7, "host rolloff applied once by DSP");
+    toggle.Set(Spatializer::P_FREE_FIELD_ATTENUATION, 1);
+    Check("free_field_applies_without_callback", std::abs(toggle.Probe()[0] - 0.25), 1e-7,
+          "DSP uses geometry immediately when mode is enabled");
+    toggle.ReportDistance(4, 0.125f);
+    toggle.Set(Spatializer::P_FREE_FIELD_ATTENUATION, 0);
+    Check("legacy_gain_restored_on_disable", std::abs(toggle.Probe()[0] - 0.125), 1e-7,
+          "latest host rolloff is restored");
+
+    Source legacyHost(48000, 0x010300);
+    legacyHost.Set(Spatializer::P_FREE_FIELD_ATTENUATION, 1);
+    legacyHost.Position(-4, 0, 0);
+    const float olderHostCallback = legacyHost.ReportDistance(4, 0.37f);
+    Check("older_host_owns_distance_attenuation", std::abs(olderHostCallback - 0.25) +
+          std::abs(legacyHost.Probe()[0] - 1), 1e-7, "legacy host receives callback gain without DSP applying it twice");
+
+    Source nonStereo(48000, 0x010400);
+    nonStereo.Set(Spatializer::P_FREE_FIELD_ATTENUATION, 1);
+    nonStereo.Set(Spatializer::P_MULTIBAND, 1);
+    nonStereo.Position(0, 4, 0);
+    float mono[] = {0.5f, -0.25f};
+    float stereo[4]{};
+    nonStereo.Process(mono, stereo, 2, 1, 2);
+    Check("mono_to_stereo_applies_distance",
+          std::abs(stereo[0] - 0.125f) + std::abs(stereo[1]) +
+          std::abs(stereo[2] + 0.0625f) + std::abs(stereo[3]), 1e-7, "attenuated channel mapping with zero padding");
+    nonStereo.Process(mono, mono, 2, 1, 1);
+    Check("in_place_mono_applies_distance", std::abs(mono[0] - 0.125f) + std::abs(mono[1] + 0.0625f), 1e-7,
+          "mono passthrough still applies distance at the modern API boundary");
+    nonStereo.Set(Spatializer::P_FREE_FIELD_ATTENUATION, 0);
+    nonStereo.Set(Spatializer::P_MOTION_SMOOTHING_MS, 0);
+    nonStereo.ReportDistance(4, 0.5f);
+    nonStereo.spatial.spatialblend = 0.5f;
+    nonStereo.Process(mono, stereo, 2, 1, 2);
+    Check("nonstereo_legacy_distance_gain", std::abs(stereo[0] - 0.09375f) + std::abs(stereo[2] + 0.046875f), 1e-7,
+          "modern host rolloff applies with partial blend even without stereo effects");
+
+    Source moving;
+    moving.Set(Spatializer::P_FREE_FIELD_ATTENUATION, 1);
+    moving.Set(Spatializer::P_MOTION_SMOOTHING_MS, 5);
+    moving.Position(-1, 0, 0);
+    moving.Probe();
+    moving.Position(-4, 0, 0);
+    double rampError = 0;
+    for (int sample = 1; sample <= 240; ++sample)
+    {
+        const double output = moving.Probe()[0];
+        Require(std::isfinite(output), "nonfinite distance ramp");
+        rampError = std::max(rampError, std::abs(output - (1 - 0.75 * sample / 240)));
+    }
+    Check("distance_gain_ramps_across_blocks", rampError, 5e-6, "5 ms ramp at 48 kHz and unchanged target across blocks");
 }
 
 void RegressionChecks()
@@ -432,7 +551,7 @@ int wmain(int argc,wchar_t** argv)
         ParameterChecks();std::cout<<"Parameter ABI and validation complete\n";
         GeometryChecks();StaticPanningChecks();std::cout<<"Geometry and static panning complete\n";
         MotionMeasurements();PartitionChecks();std::cout<<"Motion and partition measurements complete\n";
-        AttenuationChecks();RegressionChecks();FrequencyMeasurements();std::cout<<"Attenuation callback and DSP regression complete\n";
+        AttenuationChecks();DistanceOutputChecks();RegressionChecks();FrequencyMeasurements();std::cout<<"Attenuation and DSP regression complete\n";
         checks.flush();
         Benchmark(std::stoi(argv[3]),std::stoi(argv[4]));
         std::cout<<"Checks: "<<checkCount<<"; failures: "<<failures<<"; benchmark checksum: "<<benchmarkSink<<'\n';

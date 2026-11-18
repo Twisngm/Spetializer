@@ -18,7 +18,7 @@
 & ./Tests/SpatializerEvaluation/Run-Evaluation.ps1 -BenchmarkRepeats 5 -BenchmarkBlocks 96
 ```
 
-`-DllPath`는 동일한 자체 ABI를 가진 새 빌드의 검사에 사용한다. Unity SDK 원본이나 Steam Audio에 이 runner를 그대로 적용할 수는 없다. 대상 DLL에 `Demo Spatializer`, 21개 자체 파라미터 및 snapshot export가 있어야 한다.
+`-DllPath`는 동일한 자체 ABI를 가진 새 빌드의 검사에 사용한다. Unity SDK 원본이나 Steam Audio에 이 runner를 그대로 적용할 수는 없다. 대상 DLL에 `Demo Spatializer`, 22개 자체 파라미터 및 snapshot export가 있어야 한다.
 
 결과는 `Results/<UTC 실행 시각>/`에 새로 생성하며 이전 실행을 덮어쓰지 않는다. 실행 코드·source·DLL의 SHA-256, commit 및 작업 상태를 `metadata.json`에 보관한다. 실제 DLL이 source와 동일한 빌드인지 해시만으로 증명할 수는 없으므로 해당 제한도 기록한다. 빌드용 exe/obj는 `.build/`에 두고 Git에서 제외한다. CSV·검사 코드·실행 기록은 보존한다.
 
@@ -60,6 +60,7 @@ python ./Tests/SpatializerEvaluation/analyze_results.py ./Tests/SpatializerEvalu
 - **RMSE:** `sqrt(sum((gL-targetL)^2 + (gR-targetR)^2)/(2*N))`. 동일 경로·동일 구간에서 비교한다. 각도 오차나 인지 성능 지표가 아니다.
 - **분할 재현성:** 48kHz, 12000 frames, xorshift32 seed `0x12345678`의 고정 입력. 이벤트 sample 0/311/919/1801/2713/5003/7901에서 목표를 바꾸고 그 경계에서 callback을 분할한다. 동일 제어 입력을 주었을 때 block 분할만 바꾼 검사다.
 - **4밴드:** 0.125 진폭 sine, 준비 0.5초, 측정 0.5초. 8/16/44.1/48/96/192kHz에서 Nyquist에 근접하지 않는 40~16000Hz의 고정 주파수를 사용한다. 중립은 진폭 평탄성을 검사하며 위상·원본 파형 일치를 주장하지 않는다.
+- **거리 감쇠 출력:** 4밴드 OFF/ON(새추레이션 포함), Spatial Blend 0/0.5/1, 거리 0/0.5/1/2/4/8/512m 조합에서 양쪽 출력의 진폭 비율을 검사한다. `validations.csv`에는 모드 전환, 거리 Gain 보간, 채널 우회, 호스트 API 분기 결과도 기록한다.
 - **허용치:** 위치 `1e-5`, 각도 `1e-3°`, 계수/단위전력/분할 차이 `2e-6`, 중립 합산 `0.005dB` 등. 수치 회귀 검사용으로 정한 값이며 청취상 허용 오차나 제품 비교 우위 기준이 아니다. 세부 값은 `validations.csv`에 있다.
 
 ## 실행 시간 측정
@@ -75,8 +76,8 @@ python ./Tests/SpatializerEvaluation/analyze_results.py ./Tests/SpatializerEvalu
 - Unity Native SDK 원본 및 Steam Audio와의 비교
 - Unity Audio Profiler의 DSP CPU와 실제 처리 voice 수
 - 실제 scene 입력부터 출력까지의 반응 시간, 장치 latency, underrun
-- 자체 Linear 감쇠 모델 및 엔진이 적용한 감쇠의 최종 출력
+- 자체 Linear 감쇠 모델 및 Unity 엔진의 최종 믹스 출력
 - Gain 자체를 보간하는 대안과의 비교
 - 청취/방향 인지 성능
 
-감쇠 callback은 기본값에서 host의 `attenuationIn`을 통과시킨다. 기존 inverse 항을 켜서 식을 검증하지만 실제 Unity 출력까지 해당 값이 적용됐다는 검사는 아니다. 이후 Unity 측정 코드는 공간화 이후의 최종 출력 수집 위치를 먼저 검증하고, 처리 부하 측정은 파일 저장·상세 로깅과 분리해야 한다.
+합성 호스트는 거리 감쇠 콜백의 반환값과 네이티브 DLL의 출력 버퍼를 검증한다. Unity 에디터와 오디오 장치를 통한 출력은 별도 측정이 필요하다.

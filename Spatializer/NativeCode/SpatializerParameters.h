@@ -2,6 +2,7 @@
 
 namespace Spatializer
 {
+    constexpr int MaxProbeToken = 16777215; // Exact integer range for the managed float parameter.
     // 기존 씬과 SpatializerGain이 0~3번을 사용하므로 기존 번호를 유지하고 새 파라미터는 끝에만 추가한다.
     enum Parameter
     {
@@ -10,7 +11,7 @@ namespace Spatializer
         P_BAND_GAIN_LOW, P_BAND_GAIN_LOW_MID, P_BAND_GAIN_HIGH_MID, P_BAND_GAIN_HIGH,
         P_BAND_DRIVE_LOW, P_BAND_DRIVE_LOW_MID, P_BAND_DRIVE_HIGH_MID, P_BAND_DRIVE_HIGH,
         P_BAND_WET_LOW, P_BAND_WET_LOW_MID, P_BAND_WET_HIGH_MID, P_BAND_WET_HIGH,
-        P_MOTION_SMOOTHING_MS, P_FREE_FIELD_ATTENUATION,
+        P_MOTION_SMOOTHING_MS, P_FREE_FIELD_ATTENUATION, P_PROBE_TOKEN,
         P_NUM
     };
 
@@ -45,6 +46,7 @@ namespace Spatializer
         { "High Mid Wet", "", 0, 1, 0, "High-mid band saturation wet mix (0 = bypass)" },
         { "High Wet", "", 0, 1, 0, "High band saturation wet mix (0 = bypass)" },
         { "Motion Smooth", "ms", 0, 100, 5, "Sample-wise pan, blend and gain ramp time (0 = immediate)" },
-        { "Free Field Attn", "", 0, 1, 0, "Free-field distance attenuation with a 1 m reference (1 Unity unit = 1 m)" }
+        { "Free Field Attn", "", 0, 1, 0, "Free-field distance attenuation with a 1 m reference (1 Unity unit = 1 m)" },
+        { "Probe Token", "", 0, MaxProbeToken, 0, "Native level meter registration token (0 = off)" }
     };
 }

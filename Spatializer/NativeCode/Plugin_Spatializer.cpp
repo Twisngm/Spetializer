@@ -4,10 +4,72 @@
 #include "SpatializerDSP.h"
 #include "SpatializerParameters.h"
 #include <atomic>
+#include <thread>
 
 namespace Spatializer
 {
     constexpr unsigned int kDistanceAttenuationFlagApiVersion = 0x010400;
+    constexpr int kProbeSlotCount = 8;
+    constexpr int kMaxGridSide = 9;
+    constexpr int kMaxProbePoints = 2048;
+    constexpr unsigned int kMaxProbeFrames = 4096;
+
+    struct ProbeFrame
+    {
+        SpatializerDSP::StereoFrame input;
+        float blend;
+        float gain;
+    };
+
+    struct ProbeBlock
+    {
+        SpatializerDSP::Position source;
+        float worldToListener[9];
+        unsigned int frames;
+        std::uint32_t revision;
+        ProbeFrame samples[kMaxProbeFrames];
+    };
+
+    struct ProbeSlot
+    {
+        std::atomic_flag lock = ATOMIC_FLAG_INIT;
+        unsigned int generation = 0;
+        int token = 0;
+        ProbeBlock block{};
+    };
+
+    static ProbeSlot probeSlots[kProbeSlotCount];
+
+    static ProbeSlot* TryLockProbe(int token)
+    {
+        if (token <= 0 || token > MaxProbeToken)
+            return nullptr;
+        ProbeSlot& slot = probeSlots[(token - 1) % kProbeSlotCount];
+        if (slot.lock.test_and_set(std::memory_order_acquire))
+            return nullptr;
+        if (slot.token == token)
+            return &slot;
+        slot.lock.clear(std::memory_order_release);
+        return nullptr;
+    }
+
+    static bool CopyProbeBlock(int token, std::uint32_t revision, ProbeBlock& block)
+    {
+        ProbeSlot* slot = TryLockProbe(token);
+        if (slot == nullptr)
+            return false;
+        const bool fresh = slot->block.frames != 0 && slot->block.revision != revision;
+        if (fresh)
+        {
+            block.frames = slot->block.frames;
+            block.revision = slot->block.revision;
+            block.source = slot->block.source;
+            memcpy(block.worldToListener, slot->block.worldToListener, sizeof(block.worldToListener));
+            memcpy(block.samples, slot->block.samples, block.frames * sizeof(ProbeFrame));
+        }
+        slot->lock.clear(std::memory_order_release);
+        return fresh;
+    }
 
     // Single shared snapshot: listener-local x/y/z, azimuth/elevation in degrees.
     // Retains the last published values until the native library is unloaded.
@@ -88,12 +150,12 @@ namespace Spatializer
         return geometry;
     }
 
-    static float CalculatePan(const SpatialGeometry& geometry)
+    static float CalculatePan(float x, float horizontalDistance)
     {
         // 수평 거리가 없는 수직 상태의 음원의 경우 0으로 정규화
-        if (geometry.horizontalDistance <= 1.0e-6f)
+        if (horizontalDistance <= 1.0e-6f)
             return 0.0f;
-        return AudioPluginUtil::FastClip(geometry.x / geometry.horizontalDistance, -1.0f, 1.0f);
+        return AudioPluginUtil::FastClip(x / horizontalDistance, -1.0f, 1.0f);
     }
 
     static StereoGains CalculateEqualPowerGains(float pan)
@@ -113,6 +175,19 @@ namespace Spatializer
         const float angle = (pan + 1.0f) * AudioPluginUtil::kPI * 0.25f;
         const StereoGains gains = { cosf(angle), sinf(angle) };
         return gains;
+    }
+
+    static SpatializerDSP::StereoFrame RenderStereoFrame(const SpatializerDSP::StereoFrame& input,
+        const StereoGains& pan, float blend, float gain, float distanceGain)
+    {
+        const float dryMix = 1.0f - blend;
+        const float mono = 0.5f * (input.left + input.right);
+        const float pannedLeft = mono * pan.left;
+        const float pannedRight = mono * pan.right;
+        const float mixedLeft = (input.left * dryMix + pannedLeft * blend) * gain;
+        const float mixedRight = (input.right * dryMix + pannedRight * blend) * gain;
+        const float attenuation = dryMix + blend * distanceGain;
+        return { mixedLeft * attenuation, mixedRight * attenuation };
     }
 
     inline bool IsHostCompatible(UnityAudioEffectState* state)
@@ -146,6 +221,30 @@ namespace Spatializer
         // One Unity unit is one meter. Sample amplitude follows sound pressure (1/r).
         constexpr double referenceDistance = 1.0;
         return distance > referenceDistance ? static_cast<float>(referenceDistance / distance) : 1.0f;
+    }
+
+    static float MeasureProbePower(const ProbeBlock& block, float offsetX, float offsetY, float offsetZ)
+    {
+        // A virtual receiver faces the same direction as the active listener.
+        const float* m = block.worldToListener;
+        const float x = -(m[0] * offsetX + m[1] * offsetY + m[2] * offsetZ);
+        const float y = -(m[3] * offsetX + m[4] * offsetY + m[5] * offsetZ);
+        const float z = -(m[6] * offsetX + m[7] * offsetY + m[8] * offsetZ);
+        const StereoGains pan = CalculateEqualPowerGains(CalculatePan(x, sqrtf(x * x + z * z)));
+        const double xd = x, yd = y, zd = z;
+        const float distanceGain = FreeFieldDistanceGain(std::sqrt(xd * xd + yd * yd + zd * zd));
+
+        double sum = 0.0;
+        for (unsigned int n = 0; n < block.frames; ++n)
+        {
+            const ProbeFrame& frame = block.samples[n];
+            const SpatializerDSP::StereoFrame output =
+                RenderStereoFrame(frame.input, pan, frame.blend, frame.gain, distanceGain);
+            const double left = output.left, right = output.right;
+            sum += left * left + right * right;
+        }
+        const float power = static_cast<float>(sum / (2.0 * block.frames));
+        return SpatializerDSP::IsFinite(power) ? power : 0.0f;
     }
 
     static UNITY_AUDIODSP_RESULT UNITY_AUDIODSP_CALLBACK DistanceAttenuationCallback(UnityAudioEffectState* state, float distanceIn, float attenuationIn, float* attenuationOut)
@@ -267,7 +366,7 @@ namespace Spatializer
 
         const SpatializerDSP::Position position = { geometry.x, geometry.y, geometry.z };
         const SpatializerDSP::SpatialControls target = {
-            CalculatePan(geometry),
+            CalculatePan(geometry.x, geometry.horizontalDistance),
             SpatializerDSP::Clamp(state->spatializerdata->spatialblend, 0.0f, 1.0f),
             parameters[P_GAIN],
             distanceGain
@@ -293,30 +392,44 @@ namespace Spatializer
             bands[b] = { parameters[P_BAND_GAIN_LOW + b], parameters[P_BAND_DRIVE_LOW + b], parameters[P_BAND_WET_LOW + b] };
         data->multiband.Configure(sampleRate, &parameters[P_CROSSOVER_LOW], parameters[P_MULTIBAND] >= 0.5f, bands);
 
+        ProbeSlot* capture = nullptr;
+        if (appliesDistanceGain && parameters[P_FREE_FIELD_ATTENUATION] >= 0.5f)
+            capture = TryLockProbe(static_cast<int>(parameters[P_PROBE_TOKEN]));
+        // Keep the newest frames if an unusually large host block exceeds the capture buffer.
+        const unsigned int firstCapturedFrame = length > kMaxProbeFrames ? length - kMaxProbeFrames : 0;
+
         float previousPan = 2.0f; // 첫 샘플에서 반드시 좌우 계수를 계산하도록 유효 범위 밖의 값으로 시작
         StereoGains panGains = { 0, 0 };
         for (unsigned int n = 0; n < length; ++n)
         {
             const SpatializerDSP::StereoFrame input = { inbuffer[n * 2], inbuffer[n * 2 + 1] };
             const SpatializerDSP::StereoFrame processed = data->multiband.Process(input);
-            const float left = processed.left;
-            const float right = processed.right;
             const SpatializerDSP::SpatialControls controls = data->motion.Next();
             if (controls.pan != previousPan)
             {
                 panGains = CalculateEqualPowerGains(controls.pan);
                 previousPan = controls.pan;
             }
-            const float dryMix = 1.0f - controls.blend;
-            // 입력 음원을 하나의 점으로 처리
-            const float mono = 0.5f * (left + right);
-            const float pannedLeft = mono * panGains.left;
-            const float pannedRight = mono * panGains.right;
-            const float mixedLeft = (left * dryMix + pannedLeft * controls.blend) * controls.gain;
-            const float mixedRight = (right * dryMix + pannedRight * controls.blend) * controls.gain;
-            const float attenuation = dryMix + controls.blend * controls.distanceGain;
-            outbuffer[n * 2] = mixedLeft * attenuation;
-            outbuffer[n * 2 + 1] = mixedRight * attenuation;
+            const SpatializerDSP::StereoFrame output =
+                RenderStereoFrame(processed, panGains, controls.blend, controls.gain, controls.distanceGain);
+            outbuffer[n * 2] = output.left;
+            outbuffer[n * 2 + 1] = output.right;
+            if (capture != nullptr && n >= firstCapturedFrame)
+                capture->block.samples[n - firstCapturedFrame] = { processed, controls.blend, controls.gain };
+        }
+        if (capture != nullptr)
+        {
+            const auto& spatializer = *state->spatializerdata;
+            const float* m = spatializer.listenermatrix;
+            const float* s = spatializer.sourcematrix;
+            ProbeBlock& block = capture->block;
+            block.source = { s[12], s[13], s[14] };
+            const float rotation[] = { m[0], m[4], m[8], m[1], m[5], m[9], m[2], m[6], m[10] };
+            memcpy(block.worldToListener, rotation, sizeof(rotation));
+            block.frames = length - firstCapturedFrame;
+            if (++block.revision == 0)
+                ++block.revision;
+            capture->lock.clear(std::memory_order_release);
         }
 
         return UNITY_AUDIODSP_OK;
@@ -341,4 +454,92 @@ extern "C" UNITY_AUDIODSP_EXPORT_API int Spatializer_GetCurrentSpatialization(fl
 
     Spatializer::spatializationLock.clear(std::memory_order_release);
     return result;
+}
+
+// Tokens prevent an old audio instance from publishing to a recycled slot.
+extern "C" UNITY_AUDIODSP_EXPORT_API int Spatializer_CreateLevelProbe()
+{
+    using namespace Spatializer;
+    for (int i = 0; i < kProbeSlotCount; ++i)
+    {
+        ProbeSlot& slot = probeSlots[i];
+        if (slot.lock.test_and_set(std::memory_order_acquire))
+            continue;
+        if (slot.token == 0)
+        {
+            const auto generations = MaxProbeToken / kProbeSlotCount;
+            slot.generation = slot.generation % generations + 1;
+            const int token = static_cast<int>(slot.generation - 1) * kProbeSlotCount + i + 1;
+            slot.token = token;
+            slot.block.frames = 0;
+            slot.block.revision = 0;
+            slot.lock.clear(std::memory_order_release);
+            return token;
+        }
+        slot.lock.clear(std::memory_order_release);
+    }
+    return 0;
+}
+
+extern "C" UNITY_AUDIODSP_EXPORT_API void Spatializer_DestroyLevelProbe(int token)
+{
+    using namespace Spatializer;
+    if (token <= 0 || token > MaxProbeToken)
+        return;
+    ProbeSlot& slot = probeSlots[(token - 1) % kProbeSlotCount];
+    // Only the control thread destroys probes. The audio thread always uses try-lock.
+    while (slot.lock.test_and_set(std::memory_order_acquire))
+        std::this_thread::yield();
+    if (slot.token == token)
+        slot.token = 0;
+    slot.lock.clear(std::memory_order_release);
+}
+
+// Grid order is x-fastest, then y, then z. Values are output mean-square powers.
+// Returns 1 for a new block, 0 for no new block or a busy slot, -1 for invalid arguments.
+extern "C" UNITY_AUDIODSP_EXPORT_API int Spatializer_ReadLevelProbeGrid(int token, std::uint32_t* revision,
+    int side, float radius, float* sourceXYZ, float* powers, int capacity)
+{
+    using namespace Spatializer;
+    if (revision == nullptr || sourceXYZ == nullptr || powers == nullptr ||
+        side < 2 || side > kMaxGridSide || capacity < side * side * side ||
+        !SpatializerDSP::IsFinite(radius) || radius <= 0.0f)
+        return -1;
+    ProbeBlock block;
+    if (!CopyProbeBlock(token, *revision, block))
+        return 0;
+
+    const float step = 2.0f * radius / (side - 1);
+    int index = 0;
+    for (int z = 0; z < side; ++z)
+        for (int y = 0; y < side; ++y)
+            for (int x = 0; x < side; ++x)
+                powers[index++] = MeasureProbePower(block, x * step - radius, y * step - radius, z * step - radius);
+    sourceXYZ[0] = block.source.x;
+    sourceXYZ[1] = block.source.y;
+    sourceXYZ[2] = block.source.z;
+    *revision = block.revision;
+    return 1;
+}
+
+// Positions are tightly packed world-space XYZ triples. The caller picks the sampled region.
+extern "C" UNITY_AUDIODSP_EXPORT_API int Spatializer_ReadLevelProbePoints(int token, std::uint32_t* revision,
+    const float* positions, float* powers, int count)
+{
+    using namespace Spatializer;
+    if (revision == nullptr || positions == nullptr || powers == nullptr || count < 1 || count > kMaxProbePoints)
+        return -1;
+
+    ProbeBlock block;
+    if (!CopyProbeBlock(token, *revision, block))
+        return 0;
+
+    for (int i = 0; i < count; ++i)
+    {
+        const float* point = positions + i * 3;
+        powers[i] = MeasureProbePower(block, point[0] - block.source.x,
+            point[1] - block.source.y, point[2] - block.source.z);
+    }
+    *revision = block.revision;
+    return 1;
 }

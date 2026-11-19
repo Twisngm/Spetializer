@@ -834,14 +834,13 @@ MonoBehaviour:
   m_Name:
   m_EditorClassIdentifier:
   viewCamera: {fileID: 963194227}
+  listener: {fileID: 963194226}
   volumeShader: {fileID: 4800000, guid: f879a19930b942ec8e0110189af093ce, type: 3}
   volumeCube: {fileID: 10202, guid: 0000000000000000e000000000000000, type: 0}
-  radius: 4.6
+  viewProbeDepth: 16
   density: 0.4
   quietLevelDb: -48
   loudLevelDb: -18
-  decayTime: 1.2
-  tailLevelDb: -11
   spaceTogglesSource: 1
 --- !u!1 &2049512883
 GameObject:

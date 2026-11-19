@@ -26,6 +26,10 @@ namespace fs = std::filesystem;
 constexpr double Pi = 3.14159265358979323846;
 using Pair = std::array<double, 2>;
 using Snapshot = int (__cdecl*)(float*, int);
+using CreateLevelProbe = int (__cdecl*)();
+using DestroyLevelProbe = void (__cdecl*)(int);
+using ReadLevelGrid = int (__cdecl*)(int, std::uint32_t*, int, float, float*, float*, int);
+using ReadLevelPoints = int (__cdecl*)(int, std::uint32_t*, const float*, float*, int);
 UnityAudioEffectDefinition* definition = nullptr;
 Snapshot snapshot = nullptr;
 fs::path outputDirectory;
@@ -422,6 +426,139 @@ void DistanceOutputChecks()
     Check("distance_gain_ramps_across_blocks", rampError, 5e-6, "5 ms ramp at 48 kHz and unchanged target across blocks");
 }
 
+void LevelProbeChecks(CreateLevelProbe createProbe, DestroyLevelProbe destroyProbe, ReadLevelGrid readGrid,
+    ReadLevelPoints readPoints)
+{
+    constexpr int side = 3;
+    constexpr int cells = side * side * side;
+    constexpr int frames = 256;
+    constexpr float radius = 2;
+    constexpr std::array<float, 3> center = {3, -1.5f, 7};
+    std::array<float, cells> powers{};
+    std::array<float, cells * 3> positions{};
+    std::array<float, cells> selectedPowers{};
+    float reportedCenter[3]{};
+    std::uint32_t revision = 0;
+    std::uint32_t selectedRevision = 0;
+    const int token = createProbe();
+    Require(token > 0, "level probe registration failed");
+    Check("probe_before_dsp", readGrid(token, &revision, side, radius, reportedCenter, powers.data(), cells) != 0,
+          0, "no synthetic level before actual audio is processed");
+    Check("probe_rejects_short_output", readGrid(token, &revision, side, radius, reportedCenter, powers.data(), cells - 1) != -1,
+          0, "grid API validates the output buffer");
+    Check("probe_points_validate_count",
+          readPoints(token, &selectedRevision, positions.data(), selectedPowers.data(), 0) != -1 ||
+          readPoints(token, &selectedRevision, positions.data(), selectedPowers.data(), 2049) != -1,
+          0, "the sparse API rejects counts outside its work budget");
+
+    Source captured;
+    std::vector<std::unique_ptr<Source>> reference;
+    auto configure = [&](Source& source, float dx, float dy, float dz)
+    {
+        source.Position(center[0], center[1], center[2]);
+        // Face the receivers along world +X. Translate each listener independently.
+        auto* m = source.spatial.listenermatrix;
+        m[0] = m[10] = 0;
+        m[2] = 1;
+        m[8] = -1;
+        m[12] = center[2] + dz;
+        m[13] = -(center[1] + dy);
+        m[14] = -(center[0] + dx);
+        source.spatial.spatialblend = 0.5f;
+        source.Set(Spatializer::P_FREE_FIELD_ATTENUATION, 1);
+        source.Set(Spatializer::P_MULTIBAND, 1);
+        source.Set(Spatializer::P_MOTION_SMOOTHING_MS, 5);
+        source.Set(Spatializer::P_GAIN, 1.75f);
+        source.Set(Spatializer::P_BAND_GAIN_LOW_MID, 1.8f);
+        source.Set(Spatializer::P_BAND_DRIVE_LOW_MID, 6);
+        source.Set(Spatializer::P_BAND_WET_LOW_MID, 1);
+    };
+    configure(captured, 0, 0, 0);
+    captured.Set(Spatializer::P_PROBE_TOKEN, static_cast<float>(token));
+    for (int z = -1; z <= 1; ++z)
+        for (int y = -1; y <= 1; ++y)
+            for (int x = -1; x <= 1; ++x)
+            {
+                const size_t offset = reference.size() * 3;
+                positions[offset] = center[0] + radius * x;
+                positions[offset + 1] = center[1] + radius * y;
+                positions[offset + 2] = center[2] + radius * z;
+                reference.push_back(std::make_unique<Source>());
+                configure(*reference.back(), radius * x, radius * y, radius * z);
+            }
+
+    std::array<float, frames * 2> input{}, output{};
+    for (int n = 0; n < frames; ++n)
+    {
+        input[2 * n] = static_cast<float>(0.32 * std::sin(0.09 * n) + 0.27 * std::cos(0.78 * n));
+        input[2 * n + 1] = static_cast<float>(0.11 * std::sin(0.32 * n) - 0.2 * std::cos(0.63 * n));
+    }
+    auto outputPower = [&]()
+    {
+        double sum = 0;
+        for (double value : output)
+            sum += value * value;
+        return sum / output.size();
+    };
+    for (int block = 0; block < 2; ++block)
+    {
+        if (block == 1)
+        {
+            captured.Set(Spatializer::P_GAIN, 0.8f);
+            captured.spatial.spatialblend = 1;
+            for (auto& source : reference)
+            {
+                source->Set(Spatializer::P_GAIN, 0.8f);
+                source->spatial.spatialblend = 1;
+            }
+        }
+        captured.Process(input.data(), output.data(), frames);
+        const double actualListenerPower = outputPower();
+        Require(readGrid(token, &revision, side, radius, reportedCenter, powers.data(), cells) == 1,
+            "new DSP block was not published to the probe");
+        Require(readPoints(token, &selectedRevision, positions.data(), selectedPowers.data(), cells) == 1,
+            "new DSP block was not available for independently selected probe points");
+        double maximum = 0;
+        double sparseMaximum = 0;
+        for (int i = 0; i < cells; ++i)
+        {
+            reference[i]->Process(input.data(), output.data(), frames);
+            Require(std::isfinite(powers[i]) && std::isfinite(selectedPowers[i]), "probe produced nonfinite power");
+            maximum = std::max(maximum, std::abs(powers[i] - outputPower()));
+            sparseMaximum = std::max(sparseMaximum, std::abs(selectedPowers[i] - outputPower()));
+        }
+        Check("probe_grid_matches_dsp_block_" + std::to_string(block), maximum, 1e-7,
+            "27 independently rendered receivers with saturation and sample-wise gain and blend");
+        Check("probe_selected_points_match_dsp_block_" + std::to_string(block), sparseMaximum, 1e-7,
+            "world-space point list matches independent final outputs in caller order");
+        Check("probe_center_matches_actual_listener_" + std::to_string(block),
+            std::abs(powers[cells / 2] - actualListenerPower), 1e-7, "capture preserves the audible DSP output");
+    }
+    Check("probe_world_center", std::abs(reportedCenter[0] - center[0]) +
+          std::abs(reportedCenter[1] - center[1]) + std::abs(reportedCenter[2] - center[2]), 0,
+          "texture origin and measured samples describe the same audio block");
+    Check("probe_read_once_per_block", readGrid(token, &revision, side, radius, reportedCenter, powers.data(), cells) != 0,
+          0, "no new volume after a duplicate read");
+    Check("probe_selected_points_read_once",
+          readPoints(token, &selectedRevision, positions.data(), selectedPowers.data(), cells) != 0,
+          0, "selected points require a fresh DSP snapshot");
+
+    captured.Set(Spatializer::P_FREE_FIELD_ATTENUATION, 0);
+    captured.Process(input.data(), output.data(), frames);
+    Check("probe_requires_free_field", readGrid(token, &revision, side, radius, reportedCenter, powers.data(), cells) != 0,
+          0, "listener-specific Unity rolloff is unavailable at virtual receivers");
+
+    destroyProbe(token);
+    const int recycled = createProbe();
+    captured.Set(Spatializer::P_FREE_FIELD_ATTENUATION, 1);
+    captured.Process(input.data(), output.data(), frames);
+    revision = 0;
+    Check("probe_recycled_slot_rejects_old_source", recycled <= 0 || recycled == token ||
+          readGrid(recycled, &revision, side, radius, reportedCenter, powers.data(), cells) != 0,
+          0, "old audio instances cannot publish into a newly registered display");
+    destroyProbe(recycled);
+}
+
 void RegressionChecks()
 {
     Source source;source.Pan(-1);source.Probe();source.Pan(1);
@@ -542,7 +679,11 @@ int wmain(int argc,wchar_t** argv)
         using GetDefinitions=int (AUDIO_CALLING_CONVENTION*)(UnityAudioEffectDefinition***);
         auto getDefinitions=reinterpret_cast<GetDefinitions>(GetProcAddress(library,"UnityGetAudioEffectDefinitions"));
         snapshot=reinterpret_cast<Snapshot>(GetProcAddress(library,"Spatializer_GetCurrentSpatialization"));
-        Require(getDefinitions && snapshot,"required DLL exports missing");
+        auto createProbe = reinterpret_cast<CreateLevelProbe>(GetProcAddress(library, "Spatializer_CreateLevelProbe"));
+        auto destroyProbe = reinterpret_cast<DestroyLevelProbe>(GetProcAddress(library, "Spatializer_DestroyLevelProbe"));
+        auto readGrid = reinterpret_cast<ReadLevelGrid>(GetProcAddress(library, "Spatializer_ReadLevelProbeGrid"));
+        auto readPoints = reinterpret_cast<ReadLevelPoints>(GetProcAddress(library, "Spatializer_ReadLevelProbePoints"));
+        Require(getDefinitions && snapshot && createProbe && destroyProbe && readGrid && readPoints, "required DLL exports missing");
         UnityAudioEffectDefinition** definitions=nullptr;const int count=getDefinitions(&definitions);
         for(int i=0;i<count;++i) if(std::strcmp(definitions[i]->name,"Demo Spatializer")==0) definition=definitions[i];
         Require(definition!=nullptr,"Demo Spatializer not found");
@@ -551,7 +692,8 @@ int wmain(int argc,wchar_t** argv)
         ParameterChecks();std::cout<<"Parameter ABI and validation complete\n";
         GeometryChecks();StaticPanningChecks();std::cout<<"Geometry and static panning complete\n";
         MotionMeasurements();PartitionChecks();std::cout<<"Motion and partition measurements complete\n";
-        AttenuationChecks();DistanceOutputChecks();RegressionChecks();FrequencyMeasurements();std::cout<<"Attenuation and DSP regression complete\n";
+        AttenuationChecks();DistanceOutputChecks();LevelProbeChecks(createProbe, destroyProbe, readGrid, readPoints);
+        RegressionChecks();FrequencyMeasurements();std::cout<<"Attenuation and DSP regression complete\n";
         checks.flush();
         Benchmark(std::stoi(argv[3]),std::stoi(argv[4]));
         std::cout<<"Checks: "<<checkCount<<"; failures: "<<failures<<"; benchmark checksum: "<<benchmarkSink<<'\n';

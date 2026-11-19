@@ -17,10 +17,16 @@ Shader "Spatializer/Acoustic Volume"
             #include "UnityCG.cginc"
 
             UNITY_DECLARE_DEPTH_TEXTURE(_CameraDepthTexture);
-            float4 _DirectField;
-            float4 _TailField;
+            sampler3D _ViewPower;
+            sampler3D _ListenerPower;
+            float3 _ViewGridSize;
+            float4x4 _SampledViewProjection;
+            float4 _SampledEyeRow;
+            float3 _SampledDepths;
+            float4 _ListenerRegion;
+            float3 _VolumeMin;
+            float3 _VolumeMax;
             float4 _LevelRange;
-            float _AirRadius;
             float _AirDensity;
 
             struct Varyings
@@ -39,25 +45,40 @@ Shader "Spatializer/Acoustic Volume"
                 return result;
             }
 
-            float2 RayInterval(float3 origin, float3 direction, float4 field)
+            float2 RayInterval(float3 origin, float3 direction)
             {
-                float3 offset = origin - field.xyz;
-                float along = dot(offset, direction);
-                float discriminant = along * along - dot(offset, offset) + _AirRadius * _AirRadius;
-                if (field.w <= 0.0 || discriminant <= 0.0)
-                    return float2(1e8, -1e8);
-
-                float halfChord = sqrt(discriminant);
-                return float2(-along - halfChord, -along + halfChord);
+                float3 inverseDirection = (2.0 * step(0.0, direction) - 1.0) / max(abs(direction), 1e-6);
+                float3 first = (_VolumeMin - origin) * inverseDirection;
+                float3 last = (_VolumeMax - origin) * inverseDirection;
+                float3 entry = min(first, last);
+                float3 exit = max(first, last);
+                return float2(max(entry.x, max(entry.y, entry.z)), min(exit.x, min(exit.y, exit.z)));
             }
 
-            float PowerAt(float3 position, float4 field)
+            float2 SampleMeasuredPower(float3 position)
             {
-                float3 offset = position - field.xyz;
-                float distanceSquared = dot(offset, offset);
-                float radiusFractionSquared = distanceSquared / (_AirRadius * _AirRadius);
-                float edge = 1.0 - smoothstep(0.48, 1.0, radiusFractionSquared);
-                return field.w * edge / max(1.0, distanceSquared);
+                float3 listenerOffset = position - _ListenerRegion.xyz;
+                float radius = _ListenerRegion.w;
+                if (radius > 0.0 && dot(listenerOffset, listenerOffset) <= radius * radius)
+                {
+                    // One-unit spacing, with half a texel at each side of the cube.
+                    float3 uv = listenerOffset / (2.0 * radius + 1.0) + 0.5;
+                    return tex3Dlod(_ListenerPower, float4(uv, 0)).rg;
+                }
+
+                float4 world = float4(position, 1.0);
+                float eyeDepth = -dot(_SampledEyeRow, world);
+                if (eyeDepth < _SampledDepths.x || eyeDepth > _SampledDepths.y)
+                    return 0.0;
+
+                float4 clip = mul(_SampledViewProjection, world);
+                float2 viewport = clip.xy / clip.w * 0.5 + 0.5;
+                if (any(viewport < 0.0) || any(viewport > 1.0))
+                    return 0.0;
+
+                float3 grid = float3(viewport, (eyeDepth - _SampledDepths.x) * _SampledDepths.z);
+                float3 uv = (grid * (_ViewGridSize - 1.0) + 0.5) / _ViewGridSize;
+                return tex3Dlod(_ViewPower, float4(uv, 0)).rg;
             }
 
             float3 LevelColor(float level)
@@ -89,25 +110,26 @@ Shader "Spatializer/Acoustic Volume"
                 }
 
                 float eyeProjection = max(dot(direction, forward), 0.001);
-                float2 directInterval = RayInterval(origin, direction, _DirectField);
-                float2 tailInterval = RayInterval(origin, direction, _TailField);
-                float start = max(_ProjectionParams.y / eyeProjection, min(directInterval.x, tailInterval.x));
-                float end = min(sceneDepth / eyeProjection, max(directInterval.y, tailInterval.y));
+                float2 interval = RayInterval(origin, direction);
+                float start = max(_ProjectionParams.y / eyeProjection, interval.x);
+                float end = min(sceneDepth / eyeProjection, interval.y);
                 if (end <= start)
                     return 0.0;
 
-                const int maxSteps = 28;
-                int steps = (int)clamp(ceil((end - start) / 0.42), 1.0, maxSteps);
+                const int maxSteps = 36;
+                int steps = (int)clamp(ceil((end - start) / 0.45), 1.0, maxSteps);
                 float stride = (end - start) / steps;
                 float3 samplePosition = origin + direction * (start + stride * 0.5);
                 float4 accumulated = 0.0;
                 [loop]
                 for (int i = 0; i < steps; i++)
                 {
-                    float power = PowerAt(samplePosition, _DirectField) + PowerAt(samplePosition, _TailField);
+                    float2 measurement = SampleMeasuredPower(samplePosition);
+                    // Divide out the interpolated mask to ignore unsampled texels.
+                    float power = measurement.x / max(0.001, measurement.y);
                     float db = 10.0 * log10(max(1e-12, power));
                     float level = saturate((db - _LevelRange.x) * _LevelRange.y);
-                    float opacity = 1.0 - exp(-_AirDensity * level * level * stride);
+                    float opacity = 1.0 - exp(-_AirDensity * level * level * level * measurement.y * stride);
                     float weight = (1.0 - accumulated.a) * opacity;
                     accumulated += float4(LevelColor(level) * weight, weight);
                     samplePosition += direction * stride;
